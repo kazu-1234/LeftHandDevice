@@ -1,0 +1,21 @@
+# WPF / .NET Core build folders
+LeftHandDeviceApp/bin/
+LeftHandDeviceApp/obj/
+LeftHandDeviceApp/.vs/
+
+# Visual Studio files
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Executables
+*.exe
+*.dll
+*.pdb
+
+# Local settings and caches
+saved_com_port.txt
+app_settings.json
+*.sqlite
+*.sqlite3
