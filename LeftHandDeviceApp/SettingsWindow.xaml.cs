@@ -24,7 +24,7 @@ namespace LeftHandDeviceApp
         // テーマ設定保存ファイル
         private static readonly string SettingsFilePath =
             Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
+                Path.GetDirectoryName(Environment.ProcessPath ?? AppDomain.CurrentDomain.BaseDirectory),
                 "app_settings.json");
 
         public SettingsWindow()

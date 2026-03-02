@@ -29,7 +29,7 @@ namespace LeftHandDeviceApp
         private ButtonMacroConfig[] _macros = new ButtonMacroConfig[5];
         private StackPanel[] _buttonContainers = new StackPanel[5];
 
-        private readonly string _comPortFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "saved_com_port.txt");
+        private readonly string _comPortFilePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath ?? AppDomain.CurrentDomain.BaseDirectory), "saved_com_port.txt");
 
         // --- Hooks ---
         private const int WH_MOUSE_LL = 14;
@@ -102,11 +102,11 @@ namespace LeftHandDeviceApp
                 _macros[i].Steps.Add(new MacroStepConfig { Type = "KEY", Data = ((char)('a' + i)).ToString() });
             }
 
-            LoadComPorts();
+            bool hasValidSavedPort = LoadComPorts();
             GenerateBaseUI();
 
-            // 自動接続
-            if (ComPortComboBox.Items.Count > 0)
+            // 保存済みのCOMポートと完全に一致した場合のみ自動接続する
+            if (ComPortComboBox.Items.Count > 0 && hasValidSavedPort)
             {
                 ConnectButton_Click(this, new RoutedEventArgs());
             }
@@ -122,8 +122,9 @@ namespace LeftHandDeviceApp
             base.OnClosed(e);
         }
 
-        private void LoadComPorts()
+        private bool LoadComPorts()
         {
+            bool loadedSavedPort = false;
             ComPortComboBox.Items.Clear();
             string[] ports = SerialPort.GetPortNames();
             foreach (string port in ports)
@@ -141,12 +142,14 @@ namespace LeftHandDeviceApp
                 if (!string.IsNullOrEmpty(savedPort) && ComPortComboBox.Items.Contains(savedPort))
                 {
                     ComPortComboBox.SelectedItem = savedPort;
+                    loadedSavedPort = true;
                 }
                 else
                 {
                     ComPortComboBox.SelectedIndex = 0;
                 }
             }
+            return loadedSavedPort;
         }
 
         private void GenerateBaseUI()
