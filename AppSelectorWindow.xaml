@@ -1,0 +1,44 @@
+<Window x:Class="LeftHandDeviceApp.AppSelectorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        Title="アプリの選択" Height="500" Width="600"
+        WindowStartupLocation="CenterOwner"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="14"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}">
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Search Bar -->
+        <TextBox x:Name="SearchBox" Grid.Row="0" Margin="0,0,0,15"
+                 materialDesign:HintAssist.Hint="アプリ名で検索..."
+                 Style="{StaticResource MaterialDesignFloatingHintTextBox}"
+                 TextChanged="SearchBox_TextChanged"/>
+
+        <!-- App List -->
+        <ListBox x:Name="AppListBox" Grid.Row="1" Margin="0,0,0,15"
+                 SelectionChanged="AppListBox_SelectionChanged">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="5">
+                        <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="16"/>
+                        <TextBlock Text="{Binding ExecutablePath}" FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="キャンセル" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,10,0" Click="CancelButton_Click"/>
+            <Button x:Name="SelectButton" Content="選択" Style="{StaticResource MaterialDesignRaisedButton}" IsEnabled="False" Click="SelectButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

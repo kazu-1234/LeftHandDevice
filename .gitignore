@@ -1,8 +1,9 @@
 # WPF / .NET Core build folders
-LeftHandDeviceApp/bin/
-LeftHandDeviceApp/obj/
-LeftHandDeviceApp/.vs/
-
+bin/
+obj/
+/*_backup/
+.vs/
+*.user
 # Visual Studio files
 .vs/
 *.user
