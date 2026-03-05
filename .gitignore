@@ -18,5 +18,16 @@ obj/
 # Local settings and caches
 saved_com_port.txt
 app_settings.json
+app_patterns.json
 *.sqlite
 *.sqlite3
+
+# Backup folders
+*_backup/
+*__backup/
+
+# Build logs and errors
+*.log
+err.txt
+build_error.txt
+build_log.txt

@@ -1,9 +1,10 @@
 /*
  * LeftHandDevice.ino
- * v1.14.0
+ * v1.16.0
  * 
  * Raspberry Pi Pico 2 W 用 左手デバイスファームウェア
  * 同時押し・複数回押し・EEPROM可変パターン対応版
+ * 未登録（ステップ数0）のボタンによるLED点灯無効化対応
  */
 
 #include <Keyboard.h>
@@ -306,6 +307,7 @@ void handleSerialCommand(char* cmdLine) {
       else if (strcmp(dataStr, "F10") == 0) step->payload.keyData.key = KEY_F10;
       else if (strcmp(dataStr, "F11") == 0) step->payload.keyData.key = KEY_F11;
       else if (strcmp(dataStr, "F12") == 0) step->payload.keyData.key = KEY_F12;
+      else if (strcmp(dataStr, "NONE") == 0) step->payload.keyData.key = 0;
       else step->payload.keyData.key = dataStr[0];
       step->payload.keyData.modifiers = mods;
     }
@@ -352,6 +354,17 @@ void handleSerialCommand(char* cmdLine) {
     } else if (b1 >= 0 && b1 < 5) {
       flashLed(PIN_BTN_LED[b1]);
     }
+    return;
+  }
+
+  if (strncmp(cmdLine, "FLASH_ALL_BTNS", 14) == 0) {
+    for (int i = 0; i < 5; i++) digitalWrite(PIN_BTN_LED[i], HIGH);
+    delay(150);
+    for (int i = 0; i < 5; i++) digitalWrite(PIN_BTN_LED[i], LOW);
+    delay(100);
+    for (int i = 0; i < 5; i++) digitalWrite(PIN_BTN_LED[i], HIGH);
+    delay(150);
+    for (int i = 0; i < 5; i++) digitalWrite(PIN_BTN_LED[i], LOW);
     return;
   }
 }
@@ -441,6 +454,9 @@ void loop() {
           pBtns[i].isContinuousActive = false;
           pBtns[i].continuousPatternIdx = -1;
           digitalWrite(PIN_BTN_LED[i], LOW);
+          // PCに連続動作停止を通知
+          Serial.print("CONTINUOUS_STOP:");
+          Serial.println(i);
           pBtns[i].isDownReported = true; // この押下は解除で消費する
           
           // 同じパターンを共有する他のボタンも同時に停止（同時押しの片方解除対応）
@@ -449,6 +465,9 @@ void loop() {
               pBtns[k].isContinuousActive = false;
               pBtns[k].continuousPatternIdx = -1;
               digitalWrite(PIN_BTN_LED[k], LOW);
+              // PCに連続動作停止を通知
+              Serial.print("CONTINUOUS_STOP:");
+              Serial.println(k);
             }
           }
         } else {
@@ -474,10 +493,15 @@ void loop() {
     }
   }
 
+  // ボタン設定が未登録の場合、トリガー判定をスキップ
+  if (config.patternCount == 0) goto skipTrigger;
+
   // トリガー判定ロジック
   // 優先順位: 1. 同時押し, 2. 複数回押し, 3. 単発押し または 連続押し(モードB)
   for (int i = 0; i < config.patternCount; i++) {
     PatternConfig* pat = &config.patterns[i];
+    if (pat->stepCount == 0) continue; // 未登録（空）パターンの場合はスキップする
+    
     int btnIdx1 = pat->param1 - 1;
     if (btnIdx1 < 0 || btnIdx1 > 4) continue;
     
@@ -508,6 +532,11 @@ void loop() {
               pBtns[btnIdx2].continuousPatternIdx = i;
               digitalWrite(PIN_BTN_LED[btnIdx1], HIGH);
               digitalWrite(PIN_BTN_LED[btnIdx2], HIGH);
+              // PCに連続動作開始を通知
+              Serial.print("CONTINUOUS_START:");
+              Serial.print(btnIdx1);
+              Serial.print(":");
+              Serial.println(btnIdx2);
             } else {
               // 単発モード時は実行後に0.3秒点灯
               executePattern(i);
@@ -546,6 +575,8 @@ void loop() {
   // --- 単押し (Type 0) とマルチタップのリセット処理 ---
   for (int i = 0; i < config.patternCount; i++) {
     PatternConfig* pat = &config.patterns[i];
+    if (pat->stepCount == 0) continue; // 未登録（空）パターンの場合はスキップする
+    
     int btnIdx = pat->param1 - 1;
     if (btnIdx < 0 || btnIdx > 4) continue;
 
@@ -557,7 +588,7 @@ void loop() {
           // 他の複数回押しのパターンが存在するか探す
           bool hasMultiTap = false;
           for(int j=0; j<config.patternCount; j++) {
-            if (config.patterns[j].param1 - 1 == btnIdx && config.patterns[j].triggerType == 2) hasMultiTap = true;
+            if (config.patterns[j].stepCount > 0 && config.patterns[j].param1 - 1 == btnIdx && config.patterns[j].triggerType == 2) hasMultiTap = true;
           }
 
           bool canExecute = false;
@@ -580,6 +611,9 @@ void loop() {
               pBtns[btnIdx].isContinuousActive = true;
               pBtns[btnIdx].continuousPatternIdx = i;
               digitalWrite(PIN_BTN_LED[btnIdx], HIGH);
+              // PCに連続動作開始を通知
+              Serial.print("CONTINUOUS_START:");
+              Serial.println(btnIdx);
             } else {
               // 単発モード時：実行後に0.3秒点灯
               executePattern(i);
@@ -596,6 +630,7 @@ void loop() {
     }
   }
 
+skipTrigger:
   // モード切替LEDを毎ループ末尾で確定させる（他の処理中のdelay等で不安定にならないようにする）
   digitalWrite(PIN_LED_MODE, isModeB ? HIGH : LOW);
 }

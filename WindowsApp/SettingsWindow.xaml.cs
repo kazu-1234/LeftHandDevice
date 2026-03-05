@@ -8,6 +8,10 @@ using System.Linq;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Threading.Tasks;
 using MaterialDesignThemes.Wpf;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -17,7 +21,7 @@ namespace LeftHandDeviceApp
     public partial class SettingsWindow : Window
     {
         // アプリのバージョン
-        public const string AppVersion = "1.14.0";
+        public const string AppVersion = "1.16.0";
 
         // プロファイル設定ファイル (MainWindowと共通)
         private static readonly string PatternsFilePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath ?? AppDomain.CurrentDomain.BaseDirectory), "app_patterns.json");
@@ -41,6 +45,9 @@ namespace LeftHandDeviceApp
             VersionText.Text = $"v{AppVersion}";
             LoadSettings();
             LoadPatternsForSettings();
+
+            // ウィンドウ表示後に自動でアップデート確認を実行
+            Loaded += async (s, e) => await PerformUpdateCheck();
         }
 
         private void LoadPatternsForSettings()
@@ -89,51 +96,150 @@ namespace LeftHandDeviceApp
             }
             catch { }
         }
+        private int _selectedIndex = -1;
 
         private void UpdateReorderList()
         {
-            ReorderListBox.Items.Clear();
+            ReorderListGrid.Children.Clear();
+            ReorderListGrid.RowDefinitions.Clear();
+
+            for (int i = 0; i < _patterns.Count; i++)
+            {
+                ReorderListGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(40) }); // 項目の高さを40pxに完全固定
+            }
+
             for (int i = 0; i < _patterns.Count; i++)
             {
                 var p = _patterns[i];
                 string title = !string.IsNullOrWhiteSpace(p.Name) ? p.Name : $"パターン{i + 1}";
-                ReorderListBox.Items.Add(title);
+
+                var itemGrid = new Grid { Background = (_selectedIndex == i) ? new SolidColorBrush(Color.FromArgb(40, 100, 149, 237)) : Brushes.Transparent };
+                itemGrid.Tag = p;
+                itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // テキスト用
+                itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) }); // ドラッグハンドル用
+                
+                var dragHandle = new TextBlock
+                {
+                    Text = "☰",
+                    FontSize = 18,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("MaterialDesignBodyLight"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Background = Brushes.Transparent // クリック判定用
+                };
+                Grid.SetColumn(dragHandle, 1);
+                itemGrid.Children.Add(dragHandle);
+
+                var border = new Border { Padding = new Thickness(10, 10, 10, 10), BorderBrush = (Brush)FindResource("MaterialDesignDivider"), BorderThickness = new Thickness(0,0,0,1) };
+                var text = new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center };
+                border.Child = text;
+                Grid.SetColumn(border, 0);
+                itemGrid.Children.Add(border);
+                
+                Grid.SetRow(itemGrid, i);
+                ReorderListGrid.Children.Add(itemGrid);
+
+                var translate = new TranslateTransform();
+                itemGrid.RenderTransform = translate;
+                bool isDragging = false;
+                Point startMousePos = new Point();
+                double itemHeight = 40.0; // ドラッグ計算用変数も40.0に統一
+
+                dragHandle.MouseLeftButtonDown += (s, e) =>
+                {
+                    _selectedIndex = _patterns.IndexOf(p);
+                    foreach (Grid child in ReorderListGrid.Children)
+                        child.Background = (child == itemGrid) ? new SolidColorBrush(Color.FromArgb(40, 100, 149, 237)) : Brushes.Transparent;
+
+                    isDragging = true;
+                    translate.BeginAnimation(TranslateTransform.YProperty, null);
+                    startMousePos = e.GetPosition(ReorderListGrid);
+                    dragHandle.CaptureMouse();
+                    Panel.SetZIndex(itemGrid, 100);
+                    itemGrid.Opacity = 0.8;
+                };
+
+                dragHandle.MouseMove += (s, e) =>
+                {
+                    if (!isDragging) return;
+                    Point currentPos = e.GetPosition(ReorderListGrid);
+                    double offsetY = currentPos.Y - startMousePos.Y;
+                    translate.Y = offsetY;
+
+                    int currentIndex = _patterns.IndexOf(p);
+                    int stepsMoved = (int)Math.Round(offsetY / itemHeight);
+                    int targetIndex = currentIndex + stepsMoved;
+                    targetIndex = Math.Max(0, Math.Min(_patterns.Count - 1, targetIndex));
+
+                    if (targetIndex != currentIndex)
+                    {
+                        // リスト上のデータ入れ替え（保存はMouseUpまで遅延）
+                        _patterns.RemoveAt(currentIndex);
+                        _patterns.Insert(targetIndex, p);
+                        _selectedIndex = targetIndex;
+
+                        // 各UI要素のGrid.Rowを更新してアニメーション
+                        foreach (Grid g in ReorderListGrid.Children)
+                        {
+                            if (g.Tag is PatternMacroConfig cfg)
+                            {
+                                int requiredRow = _patterns.IndexOf(cfg);
+                                int oldRow = Grid.GetRow(g);
+                                if (oldRow != requiredRow)
+                                {
+                                    Grid.SetRow(g, requiredRow);
+                                    if (g != itemGrid && g.RenderTransform is TranslateTransform targetTranslate)
+                                    {
+                                        targetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                                        targetTranslate.Y = (oldRow < requiredRow) ? -itemHeight : itemHeight;
+                                        targetTranslate.BeginAnimation(
+                                            TranslateTransform.YProperty,
+                                            new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(150))
+                                            {
+                                                EasingFunction = new System.Windows.Media.Animation.CircleEase
+                                                { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+                                            });
+                                    }
+                                }
+                            }
+                        }
+
+                        // マウス基準点をオフセット
+                        startMousePos.Y += (targetIndex - currentIndex) * itemHeight;
+                        translate.Y = currentPos.Y - startMousePos.Y;
+                    }
+                };
+
+                dragHandle.MouseLeftButtonUp += (s, e) =>
+                {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    dragHandle.ReleaseMouseCapture();
+                    itemGrid.Opacity = 1.0;
+                    Panel.SetZIndex(itemGrid, 0);
+
+                    // まずスナップバックアニメーションを再生
+                    var snapAnim = new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(50))
+                    {
+                        EasingFunction = new System.Windows.Media.Animation.CircleEase
+                        { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+                    };
+
+                    // アニメーション完了後に保存と反映を実行
+                    snapAnim.Completed += (s2, e2) =>
+                    {
+                        SavePatternsForSettings();
+                        if (Application.Current.MainWindow is MainWindow mw)
+                            mw.ReloadPatternsFromSettings();
+                    };
+
+                    translate.BeginAnimation(TranslateTransform.YProperty, snapAnim);
+                };
             }
         }
 
-        private void MoveUp_Click(object sender, RoutedEventArgs e)
-        {
-            int idx = ReorderListBox.SelectedIndex;
-            if (idx > 0)
-            {
-                var t = _patterns[idx];
-                _patterns[idx] = _patterns[idx - 1];
-                _patterns[idx - 1] = t;
-                SavePatternsForSettings();
-                UpdateReorderList();
-                ReorderListBox.SelectedIndex = idx - 1;
 
-                // メインウィンドウが開かれていればリロードさせる
-                if (Application.Current.MainWindow is MainWindow mw) mw.ReloadPatternsFromSettings();
-            }
-        }
-
-        private void MoveDown_Click(object sender, RoutedEventArgs e)
-        {
-            int idx = ReorderListBox.SelectedIndex;
-            if (idx >= 0 && idx < _patterns.Count - 1)
-            {
-                var t = _patterns[idx];
-                _patterns[idx] = _patterns[idx + 1];
-                _patterns[idx + 1] = t;
-                SavePatternsForSettings();
-                UpdateReorderList();
-                ReorderListBox.SelectedIndex = idx + 1;
-
-                // メインウィンドウが開かれていればリロードさせる
-                if (Application.Current.MainWindow is MainWindow mw) mw.ReloadPatternsFromSettings();
-            }
-        }
 
         // =============================================
         // テーマ切り替え
@@ -174,6 +280,34 @@ namespace LeftHandDeviceApp
                     ActiveButtonCombo.SelectedItem = item;
                     break;
                 }
+            }
+
+            // 警告音設定の反映
+            bool warnSound = true;
+            if (File.Exists(SettingsFilePath))
+            {
+                try
+                {
+                    var jsonWs = JObject.Parse(File.ReadAllText(SettingsFilePath));
+                    if (jsonWs["WarningSound"] != null)
+                        warnSound = jsonWs["WarningSound"].Value<bool>();
+                }
+                catch { }
+            }
+            WarningSoundToggle.IsChecked = warnSound;
+
+            // 最終確認日時の表示
+            if (File.Exists(SettingsFilePath))
+            {
+                try
+                {
+                    var jsonLc = JObject.Parse(File.ReadAllText(SettingsFilePath));
+                    if (jsonLc["LastUpdateCheck"] != null)
+                    {
+                        LastCheckTimeText.Text = $"最終確認: {jsonLc["LastUpdateCheck"]}";
+                    }
+                }
+                catch { }
             }
         }
 
@@ -238,6 +372,11 @@ namespace LeftHandDeviceApp
                 if (int.TryParse(item.Tag.ToString(), out int val))
                 {
                     SaveSettings(null, val);
+                    // 並び替えリストを有効ボタン数に合わせて更新
+                    LoadPatternsForSettings();
+                    // メイン画面に反映（有効ボタン数変更でカード表示を更新）
+                    if (Application.Current.MainWindow is MainWindow mw)
+                        mw.ReloadPatternsFromSettings();
                 }
             }
         }
@@ -247,10 +386,18 @@ namespace LeftHandDeviceApp
         // =============================================
 
         /// <summary>
-        /// GitHubリリースから最新バージョンを確認する
+        /// 手動ボタンクリック時のアップデート確認
         /// </summary>
         private async void CheckUpdate_Click(
             object sender, RoutedEventArgs e)
+        {
+            await PerformUpdateCheck();
+        }
+
+        /// <summary>
+        /// GitHubリリースから最新バージョンを確認する（共通ロジック）
+        /// </summary>
+        private async Task PerformUpdateCheck()
         {
             CheckUpdateButton.IsEnabled = false;
             UpdateProgress.Visibility = Visibility.Visible;
@@ -333,14 +480,13 @@ del ""%~f0""
                 {
                     UpdateStatusText.Text =
                         $"最新バージョン (v{AppVersion}) " +
-                        "を使用中です ✔";
+                        "を使用中です";
                 }
             }
             catch (HttpRequestException)
             {
                 UpdateStatusText.Text =
-                    "サーバーに接続できませんでした。" +
-                    "リポジトリが公開されているか確認してください。";
+                    "サーバーに接続できませんでした。";
             }
             catch (Exception ex)
             {
@@ -352,6 +498,21 @@ del ""%~f0""
             {
                 CheckUpdateButton.IsEnabled = true;
                 UpdateProgress.Visibility = Visibility.Collapsed;
+
+                // 最終確認日時を保存・表示
+                string nowStr = DateTime.Now.ToString("yyyy/MM/dd HH:mm");
+                LastCheckTimeText.Text = $"最終確認: {nowStr}";
+                try
+                {
+                    JObject settings;
+                    if (File.Exists(SettingsFilePath))
+                        settings = JObject.Parse(File.ReadAllText(SettingsFilePath));
+                    else
+                        settings = new JObject();
+                    settings["LastUpdateCheck"] = nowStr;
+                    File.WriteAllText(SettingsFilePath, settings.ToString());
+                }
+                catch { }
             }
         }
 
@@ -408,5 +569,34 @@ del ""%~f0""
         {
             Close();
         }
+
+        // =============================================
+        // 警告音トグル変更ハンドラ
+        // =============================================
+        private void WarningSoundToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            bool isOn = WarningSoundToggle.IsChecked == true;
+
+            // 設定を保存
+            try
+            {
+                JObject settings;
+                if (File.Exists(SettingsFilePath))
+                    settings = JObject.Parse(File.ReadAllText(SettingsFilePath));
+                else
+                    settings = new JObject();
+                settings["WarningSound"] = isOn;
+                File.WriteAllText(SettingsFilePath, settings.ToString());
+            }
+            catch { }
+
+            // メインウィンドウに反映
+            if (Application.Current.MainWindow is MainWindow mw)
+                mw.UpdateWarningSoundSetting(isOn);
+        }
+
+
     }
+
+
 }

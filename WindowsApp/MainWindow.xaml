@@ -12,56 +12,91 @@
         Background="{DynamicResource MaterialDesignPaper}"
         FontFamily="{DynamicResource MaterialDesignFont}">
 
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <!-- Header: COM Port & Connection Status -->
-        <materialDesign:Card Grid.Row="0" Margin="0,0,0,20" Padding="15">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                
-                <StackPanel Orientation="Horizontal" Grid.Column="0">
-                    <materialDesign:PackIcon Kind="DeveloperBoard" Width="32" Height="32" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock Text="Pico W 2 接続状態" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+    <materialDesign:DialogHost x:Name="MainDialogHost" Identifier="RootDialog" CloseOnClickAway="False">
+        <!-- ダイアログの内容: アップデート通知 -->
+        <materialDesign:DialogHost.DialogContent>
+            <StackPanel Margin="24">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <materialDesign:PackIcon Kind="Update" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="アプリケーションの更新" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
                 </StackPanel>
                 
-                <ComboBox x:Name="ComPortComboBox" Grid.Column="2" Width="150" Margin="0,0,15,0" 
-                          materialDesign:HintAssist.Hint="COMポート" Style="{StaticResource MaterialDesignFloatingHintComboBox}">
-                </ComboBox>
+                <TextBlock x:Name="UpdateDialogInfoText" Text="新しいバージョンが利用可能です。" Margin="0,0,0,24"/>
                 
-                <Button x:Name="ConnectButton" Grid.Column="3" Content="接続する" Width="100" Click="ConnectButton_Click"/>
-                
-                <Button Grid.Column="4" Style="{StaticResource MaterialDesignIconButton}" 
-                        ToolTip="設定" Margin="10,0,0,0" Click="SettingsButton_Click">
-                    <materialDesign:PackIcon Kind="Cog" Width="24" Height="24"/>
-                </Button>
-            </Grid>
-        </materialDesign:Card>
-
-        <!-- Patterns Actions -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,15">
-            <Button x:Name="AddPatternButton" Content="＋ パターン追加" 
-                    Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,15,0" Click="AddPatternButton_Click"/>
-            <Button x:Name="SyncAllButton" Content="すべてマイコンへ保存" 
-                    Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,15,0" Click="SyncAllButton_Click"/>
-            <TextBlock x:Name="ActiveButtonsText" Text="有効ボタン数: 5" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-        </StackPanel>
-
-        <!-- Patterns Config Area -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-            <StackPanel x:Name="PatternsConfigPanel">
-                <!-- Dynamically generated patterns -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="UpdateDialogGoButton" Content="アップデートを行う" Margin="0,0,12,0" 
+                            Style="{StaticResource MaterialDesignRaisedButton}" Click="UpdateDialog_GoClick"/>
+                    <Button Content="後で" Style="{StaticResource MaterialDesignOutlinedButton}" 
+                            Command="{x:Static materialDesign:DialogHost.CloseDialogCommand}"/>
+                </StackPanel>
             </StackPanel>
-        </ScrollViewer>
-    </Grid>
+        </materialDesign:DialogHost.DialogContent>
+
+        <Grid>
+            <!-- メインコンテンツエリア -->
+            <Grid Margin="20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header: COM Port & Connection Status -->
+                <materialDesign:Card Grid.Row="0" Margin="0,0,0,20" Padding="15">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <StackPanel Orientation="Horizontal" Grid.Column="0">
+                            <materialDesign:PackIcon Kind="DeveloperBoard" Width="32" Height="32" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock Text="Pico W 2 接続状態" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        
+                        <ComboBox x:Name="ComPortComboBox" Grid.Column="2" Width="150" Margin="0,0,15,0" 
+                                  materialDesign:HintAssist.Hint="COMポート" Style="{StaticResource MaterialDesignFloatingHintComboBox}">
+                        </ComboBox>
+                        
+                        <Button x:Name="ConnectButton" Grid.Column="3" Content="接続する" Width="100" Click="ConnectButton_Click"/>
+                        
+                        <Button Grid.Column="4" Style="{StaticResource MaterialDesignIconButton}" 
+                                ToolTip="設定" Margin="10,0,0,0" Click="SettingsButton_Click">
+                            <materialDesign:PackIcon Kind="Cog" Width="24" Height="24"/>
+                        </Button>
+                    </Grid>
+                </materialDesign:Card>
+
+                <!-- Patterns Actions -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,15">
+                    <Button x:Name="AddPatternButton" Content="＋ パターン追加" 
+                            Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,15,0" Click="AddPatternButton_Click"/>
+                    <Button x:Name="SyncAllButton" Content="すべてマイコンへ保存" 
+                            Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,15,0" Click="SyncAllButton_Click"/>
+                    <TextBlock x:Name="ActiveButtonsText" Text="有効ボタン数: 5" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                </StackPanel>
+
+                <!-- Patterns Config Area -->
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="PatternsConfigPanel">
+                        <!-- Dynamically generated patterns -->
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- 連続動作中 警告オーバーレイ（通常は非表示） -->
+            <Border x:Name="ContinuousWarningOverlay" Visibility="Collapsed"
+                    Background="#88000000" VerticalAlignment="Top" HorizontalAlignment="Right"
+                    Margin="20,20,20,0" CornerRadius="8" Padding="16,10">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="⚠️" FontSize="18" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="連続動作中です！" FontSize="16" FontWeight="Bold" 
+                               Foreground="White" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </materialDesign:DialogHost>
 </Window>

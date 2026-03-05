@@ -7,10 +7,17 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
+using System.Media;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Threading.Tasks;
+using System.Net.Http;
+using MaterialDesignThemes.Wpf;
 
 namespace LeftHandDeviceApp
 {
@@ -67,6 +74,17 @@ namespace LeftHandDeviceApp
         private PatternMacroConfig _lastChangedPattern = null;
         private bool _isRenderingPatterns = false;
 
+        // 連続動作中の状態管理
+        private HashSet<int> _continuousActiveButtons = new HashSet<int>();
+        private bool _warningSound = true; // デフォルトで警告音ON
+        private System.Windows.Threading.DispatcherTimer _warningHideTimer;
+
+        // ステップD&D用
+        private int _dragStepSourceIndex = -1;
+        private PatternMacroConfig _dragStepPattern = null;
+        private DragAdorner _stepDragAdorner = null;
+        private HashSet<int> _unsyncedChangedButtons = new HashSet<int>();
+
         // 自動送信用タイマー（UIの変更を500ms待ってからまとめて送信）
         private System.Windows.Threading.DispatcherTimer _autoSyncTimer;
 
@@ -104,9 +122,37 @@ namespace LeftHandDeviceApp
             bool hasValidSavedPort = LoadComPorts();
             RenderAllPatterns();
 
-            // 自動送信タイマーの初期化（500ms後にまとめて送信）
+            // 警告音設定の読み込み
+            LoadWarningSoundSetting();
+
+            // 連続動作中の警告表示を一定時間後に自動非表示にするタイマー
+            _warningHideTimer = new System.Windows.Threading.DispatcherTimer();
+            _warningHideTimer.Interval = TimeSpan.FromSeconds(3);
+            _warningHideTimer.Tick += (s, e) =>
+            {
+                _warningHideTimer.Stop();
+                // フェードアウトアニメーション
+                var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));
+                fadeOut.Completed += (s2, e2) =>
+                {
+                    ContinuousWarningOverlay.Visibility = Visibility.Collapsed;
+                    ContinuousWarningOverlay.Opacity = 1;
+                };
+                ContinuousWarningOverlay.BeginAnimation(OpacityProperty, fadeOut);
+            };
+
+            // ウィンドウが非アクティブになった時の警告処理
+            this.Deactivated += (s, e) =>
+            {
+                if (_continuousActiveButtons.Count > 0)
+                {
+                    ShowContinuousWarning();
+                }
+            };
+
+            // 自動送信タイマーの初期化（200ms後にまとめて送信）
             _autoSyncTimer = new System.Windows.Threading.DispatcherTimer();
-            _autoSyncTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _autoSyncTimer.Interval = TimeSpan.FromMilliseconds(200);
             _autoSyncTimer.Tick += (s, e) =>
             {
                 _autoSyncTimer.Stop();
@@ -114,33 +160,32 @@ namespace LeftHandDeviceApp
                 SyncAllToPico();
 
                 // データ送信完了後、Arduinoが全コマンドを処理し終えてからLED点滅コマンドを送信
-                if (_lastChangedPattern != null && _isConnected && _serialPort != null && _serialPort.IsOpen)
+                if (_unsyncedChangedButtons.Count > 0 && _isConnected && _serialPort != null && _serialPort.IsOpen)
                 {
                     System.Threading.Thread.Sleep(300);
                     try
                     {
-                        // 変更されたパターンのボタン番号を取得（0始まりに変換）
-                        int b1 = _lastChangedPattern.TriggerParam1 - 1;
-                        int b2 = -1;
-                        // 同時押し(TriggerType==1)の場合のみ、2つ目のボタンも光らせる
-                        if (_lastChangedPattern.TriggerType == 1 && _lastChangedPattern.TriggerParam2 > 0)
+                        foreach (int bIndex in _unsyncedChangedButtons)
                         {
-                            b2 = _lastChangedPattern.TriggerParam2 - 1;
-                        }
-                        if (b1 >= 0 && b1 < 5)
-                        {
-                            _serialPort.WriteLine($"FLASH_BUTTONS:{b1}:{b2}");
+                            if (bIndex >= 0 && bIndex < 5)
+                            {
+                                _serialPort.WriteLine($"FLASH_BUTTONS:{bIndex}:-1");
+                                System.Threading.Thread.Sleep(350); // 連続で送るとマイコン側が処理しきれない場合があるためウェイト
+                            }
                         }
                     }
                     catch { }
                 }
-                _lastChangedPattern = null;
+                _unsyncedChangedButtons.Clear();
             };
 
             if (ComPortComboBox.Items.Count > 0 && hasValidSavedPort)
             {
                 ConnectButton_Click(this, new RoutedEventArgs());
             }
+
+            // 起動時にバックグラウンドでアップデートを確認
+            _ = CheckUpdateAtStartupAsync();
         }
 
         protected override void OnClosed(EventArgs e)
@@ -190,6 +235,8 @@ namespace LeftHandDeviceApp
                 }
                 catch { }
             }
+            // 有効ボタン数が1~5の範囲外の場合は補正
+            _activeButtonCount = Math.Max(1, Math.Min(5, _activeButtonCount));
             ActiveButtonsText.Text = $"有効ボタン数: {_activeButtonCount}";
         }
 
@@ -205,10 +252,10 @@ namespace LeftHandDeviceApp
                 }
                 catch { }
             }
-            // 初回起動時など空の場合、または4個以下の場合は、不足分を補いつつ全体を整える
+            // 初回起動時など空の場合、不足分を補う
             if (!File.Exists(_patternsFilePath) && _patterns.Count < 5)
             {
-                var existingBtnIds = _patterns.Select(p => p.TriggerParam1).ToList();
+                var existingBtnIds = _patterns.Where(p => p.TriggerType == 0).Select(p => p.TriggerParam1).ToList();
                 for (int i = 1; i <= 5; i++)
                 {
                     if (!existingBtnIds.Contains(i))
@@ -218,18 +265,17 @@ namespace LeftHandDeviceApp
                         _patterns.Add(p);
                     }
                 }
+                // 初回のみボタン番号順に並べ替え
+                _patterns = _patterns.OrderBy(p => p.TriggerParam1).ToList();
                 SavePatterns();
             }
-
-            // 初回など、基本の5つの場合はボタン番号順に並べ替えておく（表示が混ざらないようにするため）
-            if (!File.Exists(_patternsFilePath) && _patterns.Count == 5 && _patterns.All(p => p.TriggerType == 0))
-            {
-                _patterns = _patterns.OrderBy(p => p.TriggerParam1).ToList();
-            }
+            // ※設定画面で並び替えた順序を維持するため、ここでは再ソートしない
         }
 
         public void ReloadPatternsFromSettings()
         {
+            // 設定画面から呼ばれた場合、有効ボタン数も再読み込みする
+            LoadSettings();
             LoadPatterns();
             RenderAllPatterns();
         }
@@ -253,7 +299,7 @@ namespace LeftHandDeviceApp
         {
             _isRenderingPatterns = true;
 
-            // 欠損しているベースパターン(単押し)を復元
+            // 欠損しているベースパターン(単押し)を復元（有効ボタン数の範囲内のみ）
             for (int i = 1; i <= _activeButtonCount; i++)
             {
                 if (!_patterns.Any(p => p.TriggerType == 0 && p.TriggerParam1 == i))
@@ -278,6 +324,15 @@ namespace LeftHandDeviceApp
             PatternsConfigPanel.Children.Clear();
             for (int i = 0; i < _patterns.Count; i++)
             {
+                var pat = _patterns[i];
+                // 有効ボタン数を超えるベースパターン（単押し）は非表示にする
+                if (pat.TriggerType == 0 && pat.TriggerParam1 > _activeButtonCount)
+                    continue;
+                // 有効ボタン数を超えるボタンを使う追加パターンも非表示にする
+                if (pat.TriggerParam1 > _activeButtonCount)
+                    continue;
+                if (pat.TriggerType == 1 && pat.TriggerParam2 > _activeButtonCount)
+                    continue;
                 RenderPatternCard(i);
             }
             _isRenderingPatterns = false;
@@ -360,7 +415,7 @@ namespace LeftHandDeviceApp
             var deleteBtn = new Button
             {
                 Content = "✕",
-                Foreground = Brushes.Red,
+                Foreground = new SolidColorBrush(Color.FromRgb(244, 67, 54)),
                 ToolTip = "削除",
                 FontSize = 18,
                 Padding = new Thickness(5, 0, 5, 0),
@@ -572,14 +627,23 @@ namespace LeftHandDeviceApp
                 if (_isCapturing && _capturingPattern == pattern) 
                 {
                     mouseCapMainBtn.Content = _captureCount > 0 ? $"登録中 ({_captureCount})..." : "一括登録 停止 (Esc)";
-                    mouseCapMainBtn.Foreground = Brushes.Red;
+                    mouseCapMainBtn.Foreground = new SolidColorBrush(Color.FromRgb(244, 67, 54));
                 }
                 else
                 {
                     mouseCapMainBtn.Content = "マウス一括登録";
-                    mouseCapMainBtn.Foreground = Brushes.White;
+                    // テーマに合わせた文字色（ライト/ダーク両対応）
+                    mouseCapMainBtn.Foreground = (Brush)FindResource("MaterialDesignBody");
                 }
             };
+
+            // ステップ用コンテナをGridで作成（D&Dのために行(Row)ベースで配置する）
+            var stepsContainerGrid = new Grid();
+            for (int i = 0; i < pattern.Steps.Count; i++)
+            {
+                stepsContainerGrid.RowDefinitions.Add(
+                    new RowDefinition { Height = GridLength.Auto });
+            }
 
             // Steps
             for (int i = 0; i < pattern.Steps.Count; i++)
@@ -588,6 +652,8 @@ namespace LeftHandDeviceApp
                 var step = pattern.Steps[stepIndex];
 
                 var stepGrid = new Grid { Margin = new Thickness(0, 5, 0, 5) };
+                stepGrid.Tag = step; // インデックスではなくオブジェクト参照自体を保持
+                stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) }); // ドラッグハンドル
                 stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
                 stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
                 stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -595,8 +661,130 @@ namespace LeftHandDeviceApp
                 stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-                var numBlock = new TextBlock { Text = $"{stepIndex + 1}.", VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("MaterialDesignBody") };
-                Grid.SetColumn(numBlock, 0);
+                // D&D用にGridの行番号を設定
+                Grid.SetRow(stepGrid, stepIndex);
+
+                // ドラッグハンドル（☰アイコン）
+                var dragHandle = new TextBlock
+                {
+                    Text = "☰",
+                    FontSize = 16,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Cursor = Cursors.Hand,
+                    Foreground = (Brush)FindResource("MaterialDesignBodyLight"),
+                    ToolTip = "ドラッグで並び替え"
+                };
+                Grid.SetColumn(dragHandle, 0);
+
+                var translate = new TranslateTransform();
+                stepGrid.RenderTransform = translate;
+                
+                bool isDragging = false;
+                Point startMousePos = new Point();
+                double itemHeight = 42.0;
+
+                dragHandle.MouseLeftButtonDown += (s, e) =>
+                {
+                    isDragging = true;
+                    translate.BeginAnimation(TranslateTransform.YProperty, null); // クリア
+                    startMousePos = e.GetPosition(stepsContainerGrid);
+                    dragHandle.CaptureMouse();
+                    Panel.SetZIndex(stepGrid, 100);
+                    stepGrid.Opacity = 0.8;
+                };
+
+                dragHandle.MouseMove += (s, e) =>
+                {
+                    if (!isDragging) return;
+                    Point currentPos = e.GetPosition(stepsContainerGrid);
+                    double offsetY = currentPos.Y - startMousePos.Y;
+                    translate.Y = offsetY;
+
+                    int currentIndex = pattern.Steps.IndexOf(step);
+                    int stepsMoved = (int)Math.Round(offsetY / itemHeight);
+                    int targetIndex = currentIndex + stepsMoved;
+                    targetIndex = Math.Max(0, Math.Min(pattern.Steps.Count - 1, targetIndex));
+
+                    if (targetIndex != currentIndex)
+                    {
+                        // リスト上の順序入れ替え
+                        pattern.Steps.RemoveAt(currentIndex);
+                        pattern.Steps.Insert(targetIndex, step);
+
+                        // 各UI要素のGrid.Rowを更新して視覚的並び替え
+                        foreach (UIElement child in stepsContainerGrid.Children)
+                        {
+                            if (child is Grid g && g.Tag is MacroStepConfig cfg)
+                            {
+                                int requiredRow = pattern.Steps.IndexOf(cfg);
+                                int oldRow = Grid.GetRow(g);
+                                if (oldRow != requiredRow)
+                                {
+                                    Grid.SetRow(g, requiredRow);
+                                    if (g != stepGrid && g.RenderTransform is TranslateTransform targetTranslate)
+                                    {
+                                        targetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                                        targetTranslate.Y = (oldRow < requiredRow) ? -itemHeight : itemHeight;
+                                        targetTranslate.BeginAnimation(
+                                            TranslateTransform.YProperty,
+                                            new DoubleAnimation(0, TimeSpan.FromMilliseconds(150))
+                                            {
+                                                EasingFunction = new System.Windows.Media.Animation.CircleEase
+                                                {
+                                                    EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+                                                }
+                                            });
+                                    }
+                                }
+                            }
+                        }
+                        
+                        startMousePos.Y += (targetIndex - currentIndex) * itemHeight;
+                        translate.Y = currentPos.Y - startMousePos.Y;
+                    }
+                };
+
+                dragHandle.MouseLeftButtonUp += (s, e) =>
+                {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    dragHandle.ReleaseMouseCapture();
+                    stepGrid.Opacity = 1.0;
+                    Panel.SetZIndex(stepGrid, 0);
+
+                    // 番号テキストの一括更新
+                    foreach (UIElement child in stepsContainerGrid.Children)
+                    {
+                        if (child is Grid g && g.Tag is MacroStepConfig cfg)
+                        {
+                            int requiredRow = pattern.Steps.IndexOf(cfg);
+                            var txt = g.Children.OfType<TextBlock>()
+                                .FirstOrDefault(t => Grid.GetColumn(t) == 1);
+                            if (txt != null) txt.Text = $"{requiredRow + 1}.";
+                        }
+                    }
+                    
+                    translate.BeginAnimation(
+                        TranslateTransform.YProperty,
+                        new DoubleAnimation(0, TimeSpan.FromMilliseconds(150))
+                        {
+                            EasingFunction = new System.Windows.Media.Animation.CircleEase
+                            {
+                                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+                            }
+                        });
+
+                    ScheduleAutoSync(pattern); // データ保存
+                };
+
+                var numBlock = new TextBlock
+                {
+                    Text = $"{stepIndex + 1}.",
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("MaterialDesignBody")
+                };
+                Grid.SetColumn(numBlock, 1);
 
                 var typeCombo = new ComboBox { Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
                 typeCombo.Items.Add(new ComboBoxItem { Content = "キーボード", Tag = "KEY" });
@@ -604,16 +792,33 @@ namespace LeftHandDeviceApp
                 typeCombo.Items.Add(new ComboBoxItem { Content = "アプリ起動", Tag = "CMD" });
                 typeCombo.Items.Add(new ComboBoxItem { Content = "待機", Tag = "WAIT" });
                 SetComboByTag(typeCombo, step.Type);
-                Grid.SetColumn(typeCombo, 1);
+                Grid.SetColumn(typeCombo, 2);
 
-                var inputTxt = new TextBox { Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, Text = step.Data, Foreground = (Brush)FindResource("MaterialDesignBody") };
-                Grid.SetColumn(inputTxt, 2);
+                var inputTxt = new TextBox
+                {
+                    Margin = new Thickness(0, 0, 10, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Text = step.Data,
+                    Foreground = (Brush)FindResource("MaterialDesignBody")
+                };
+                Grid.SetColumn(inputTxt, 3);
 
                 var browseBtn = new Button { Content = "参照", Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(browseBtn, 3);
+                Grid.SetColumn(browseBtn, 4);
                 
-                var stepDelBtn = new Button { Content = "✕", Style = (Style)FindResource("MaterialDesignFlatButton"), Foreground = Brushes.Red, FontSize = 18, Padding = new Thickness(5, 0, 5, 0), MinWidth = 30, VerticalAlignment = VerticalAlignment.Center, Visibility = stepIndex == 0 ? Visibility.Hidden : Visibility.Visible };
-                Grid.SetColumn(stepDelBtn, 5);
+                // 削除ボタン（赤色はエラー強調のため維持）
+                var stepDelBtn = new Button
+                {
+                    Content = "✕",
+                    Style = (Style)FindResource("MaterialDesignFlatButton"),
+                    Foreground = new SolidColorBrush(Color.FromRgb(244, 67, 54)),
+                    FontSize = 18,
+                    Padding = new Thickness(5, 0, 5, 0),
+                    MinWidth = 30,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Visibility = stepIndex == 0 ? Visibility.Hidden : Visibility.Visible
+                };
+                Grid.SetColumn(stepDelBtn, 6);
 
                 Action updateStepUI = () =>
                 {
@@ -703,15 +908,17 @@ namespace LeftHandDeviceApp
 
                 updateStepUI();
 
+                stepGrid.Children.Add(dragHandle);
                 stepGrid.Children.Add(numBlock);
                 stepGrid.Children.Add(typeCombo);
                 stepGrid.Children.Add(inputTxt);
                 stepGrid.Children.Add(browseBtn);
-                // stepGrid.Children.Add(mouseCapBtn); // 削除
                 stepGrid.Children.Add(stepDelBtn);
 
-                container.Children.Add(stepGrid);
+                // ステップをGridコンテナに追加（StackPanelではなくGridに配置）
+                stepsContainerGrid.Children.Add(stepGrid);
             }
+            container.Children.Add(stepsContainerGrid);
 
             var footerPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
 
@@ -763,8 +970,15 @@ namespace LeftHandDeviceApp
         {
             if (_isRenderingPatterns) return;
 
-            // 変更されたパターンの参照を保持（常に最新で上書き）
-            if (changedPattern != null) _lastChangedPattern = changedPattern;
+            // 変更されたパターンの参照を保持
+            if (changedPattern != null)
+            {
+                _unsyncedChangedButtons.Add(changedPattern.TriggerParam1 - 1);
+                if (changedPattern.TriggerType == 1 && changedPattern.TriggerParam2 > 0)
+                {
+                    _unsyncedChangedButtons.Add(changedPattern.TriggerParam2 - 1);
+                }
+            }
             
             _autoSyncTimer.Stop();
             _autoSyncTimer.Start();
@@ -836,6 +1050,17 @@ namespace LeftHandDeviceApp
         {
             SavePatterns();
             SyncAllToPico();
+            
+            if (_isConnected && _serialPort != null && _serialPort.IsOpen)
+            {
+                System.Threading.Thread.Sleep(300);
+                try
+                {
+                    _serialPort.WriteLine("FLASH_ALL_BTNS");
+                }
+                catch { }
+            }
+            _unsyncedChangedButtons.Clear();
         }
 
         private void ConnectButton_Click(object sender, RoutedEventArgs e)
@@ -847,6 +1072,8 @@ namespace LeftHandDeviceApp
                     try
                     {
                         _serialPort = new SerialPort(ComPortComboBox.SelectedItem.ToString(), 115200);
+                        // Arduinoからのシリアル通知を受信するイベントを登録
+                        _serialPort.DataReceived += SerialPort_DataReceived;
                         _serialPort.Open();
                         _isConnected = true;
                         ConnectButton.Content = "切断する";
@@ -871,6 +1098,8 @@ namespace LeftHandDeviceApp
                 _isConnected = false;
                 ConnectButton.Content = "接続する";
                 ComPortComboBox.IsEnabled = true;
+                // 切断時に連続動作状態をクリア
+                _continuousActiveButtons.Clear();
             }
         }
 
@@ -924,14 +1153,18 @@ namespace LeftHandDeviceApp
                 for (int pIndex = 0; pIndex < limit; pIndex++)
                 {
                     var p = _patterns[pIndex];
-                    int steps = p.Steps.Count;
+                    
+                    // 空でない有用なステップだけを抽出
+                    var validSteps = p.Steps.Where(st => !string.IsNullOrEmpty(st.Data) && st.Data != "NONE").ToList();
+                    int steps = validSteps.Count;
+                    
                     _serialPort.WriteLine($"ADD_PATTERN:{p.TriggerType}:{p.TriggerParam1}:{p.TriggerParam2}:{p.RepeatInterval}:{steps}");
                     System.Threading.Thread.Sleep(20);
 
                     for (int sIndex = 0; sIndex < steps; sIndex++)
                     {
-                        var st = p.Steps[sIndex];
-                        string safeData = string.IsNullOrEmpty(st.Data) ? "0" : st.Data;
+                        var st = validSteps[sIndex];
+                        string safeData = string.IsNullOrEmpty(st.Data) ? "NONE" : st.Data;
                         _serialPort.WriteLine($"SET_STEP:{pIndex}:{sIndex}:{st.Type}:{safeData}");
                         System.Threading.Thread.Sleep(20);
                     }
@@ -1083,6 +1316,165 @@ namespace LeftHandDeviceApp
                 }
             }
             return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
+        }
+
+
+
+        // =============================================
+        // シリアル受信ハンドラ（Arduinoからの連続動作通知を処理）
+        // =============================================
+        private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        {
+            try
+            {
+                if (_serialPort == null || !_serialPort.IsOpen) return;
+                string line = _serialPort.ReadLine().Trim();
+
+                if (line.StartsWith("CONTINUOUS_START:"))
+                {
+                    // 連続動作開始通知を処理
+                    string[] parts = line.Substring(17).Split(':');
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        foreach (var part in parts)
+                        {
+                            if (int.TryParse(part, out int btnIdx))
+                            {
+                                _continuousActiveButtons.Add(btnIdx);
+                            }
+                        }
+                    });
+                }
+                else if (line.StartsWith("CONTINUOUS_STOP:"))
+                {
+                    // 連続動作停止通知を処理
+                    string btnStr = line.Substring(16);
+                    if (int.TryParse(btnStr, out int btnIdx))
+                    {
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            _continuousActiveButtons.Remove(btnIdx);
+                        });
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // =============================================
+        // 連続動作中の警告表示
+        // =============================================
+        private void ShowContinuousWarning()
+        {
+            // 警告音を鳴らす（設定がONの場合）
+            if (_warningSound)
+            {
+                SystemSounds.Exclamation.Play();
+            }
+
+            // 警告オーバーレイをフェードインで表示
+            ContinuousWarningOverlay.Opacity = 0;
+            ContinuousWarningOverlay.Visibility = Visibility.Visible;
+            var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200));
+            ContinuousWarningOverlay.BeginAnimation(OpacityProperty, fadeIn);
+
+            // 3秒後に自動で非表示にするタイマーを再起動
+            _warningHideTimer.Stop();
+            _warningHideTimer.Start();
+        }
+
+        // =============================================
+        // 警告音設定の読み込み
+        // =============================================
+        private void LoadWarningSoundSetting()
+        {
+            if (File.Exists(_settingsFilePath))
+            {
+                try
+                {
+                    var json = JObject.Parse(File.ReadAllText(_settingsFilePath));
+                    if (json["WarningSound"] != null)
+                        _warningSound = json["WarningSound"].Value<bool>();
+                }
+                catch { }
+            }
+        }
+
+        // 設定画面から呼び出される警告音設定の更新
+        // 設定画面から呼び出される警告音設定の更新
+        public void UpdateWarningSoundSetting(bool enabled)
+        {
+            _warningSound = enabled;
+        }
+
+        // =============================================
+        // 自動アップデート確認 (GitHub API)
+        // =============================================
+
+        private const string GitHubOwner = "kazu-1234";
+        private const string GitHubRepo = "LeftHandDevice";
+        private const string GitHubApiUrl = "https://api.github.com/repos/{0}/{1}/releases/latest";
+
+        /// <summary>
+        /// 起動時にバックグラウンドでアップデートを確認する
+        /// </summary>
+        private async Task CheckUpdateAtStartupAsync()
+        {
+            try
+            {
+                // UIスレッドをブロックしないよう少し待機してから開始
+                await Task.Delay(2000);
+
+                using (var client = new HttpClient())
+                {
+                    // GitHub APIにはUser-Agentが必要
+                    client.DefaultRequestHeaders.Add("User-Agent", "LeftHandDeviceApp");
+                    var response = await client.GetAsync(string.Format(GitHubApiUrl, GitHubOwner, GitHubRepo));
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var json = await response.Content.ReadAsStringAsync();
+                        var release = JObject.Parse(json);
+                        string latestVersion = release["tag_name"]?.ToString().Trim().Replace("v", "");
+
+                        if (!string.IsNullOrEmpty(latestVersion) && IsNewerVersion(latestVersion, SettingsWindow.AppVersion))
+                        {
+                            // 最新版がある場合、ダイアログを表示
+                            UpdateDialogInfoText.Text = $"最新バージョン (v{latestVersion}) が利用可能です。\nアップデートして機能を最新に保ちましょう。";
+                            MainDialogHost.IsOpen = true;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private bool IsNewerVersion(string latest, string current)
+        {
+            try
+            {
+                var vLatest = new Version(latest);
+                var vCurrent = new Version(current);
+                return vLatest > vCurrent;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// ダイアログ内の「アップデートを行う」ボタンクリック
+        /// </summary>
+        private void UpdateDialog_GoClick(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = $"https://github.com/{GitHubOwner}/{GitHubRepo}/releases/latest",
+                    UseShellExecute = true
+                });
+                MainDialogHost.IsOpen = false;
+            }
+            catch { }
         }
     }
 }
