@@ -83,7 +83,8 @@ Raspberry Pi Pico 2 Wを組み込んだデバイス本体。
 
 現在はプロトタイピングとしてブレッドボードやユニバーサル基板上で回路を構成していますが、今後は専用のプリント基板（PCB）を設計し、表面実装部品への置き換えと筐体の小型化を計画しています。
 
-*↑ 現在設計中の専用基板の3Dレンダリングイメージ。*
+<img width="818" height="376" alt="image" src="https://github.com/user-attachments/assets/626d081e-f037-4fc3-904c-839eb12aefca" />
+
 
 ## ディレクトリ構成
 
