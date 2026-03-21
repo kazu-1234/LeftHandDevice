@@ -22,7 +22,7 @@ PC側のアプリケーションから複雑なマクロパターンを構築し
 
 Raspberry Pi Pico 2 Wを組み込んだデバイス本体。
 
-各ボタンに内蔵されたLEDによる状態フィードバック。
+各ボタンを押したときにLEDによって状態を判別
 <img src="https://github.com/user-attachments/assets/c0cc62f8-bf68-4903-8992-a4d63e140cd0" alt="hard" width="500" />
 
 ## 主な機能と特徴
