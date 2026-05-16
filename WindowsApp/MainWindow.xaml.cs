@@ -35,6 +35,11 @@ namespace LeftHandDeviceApp
         public int TriggerParam2 { get; set; } = 2; // 同時押しのボタン2(1〜5)、または複数回押しの回数(2〜3)
         public int RepeatInterval { get; set; } = 200; // 連続間隔 (ms)
         public List<MacroStepConfig> Steps { get; set; } = new List<MacroStepConfig>();
+        
+        // ボリューム用の設定
+        public int PotMin { get; set; } = 0;
+        public int PotMax { get; set; } = 4095;
+        public int VolLimit { get; set; } = 100;
     }
 
     public partial class MainWindow : Window
@@ -44,6 +49,19 @@ namespace LeftHandDeviceApp
         
         private List<PatternMacroConfig> _patterns = new List<PatternMacroConfig>();
         private int _activeButtonCount = 5; // 初期値
+        
+        public int ActiveVolumeCount { get; set; } = 1;
+
+        private VolumeController? _volumeController;
+        private string _baseWindowTitle = "LeftHandDevice";
+        private DateTime _lastPotNeedZeroHint = DateTime.MinValue;
+
+        private PatternMacroConfig _calibrationTarget = null;
+        private int _calibrationTargetProperty = 0; // 1=PotMin, 2=PotMax
+        private Action<int> _calibrationTargetAction = null;
+
+        public event Action<int> ADCValueReceived;
+        public event Action<int, int> ADCValueReceivedForVolume;
 
         private readonly string _comPortFilePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath ?? AppDomain.CurrentDomain.BaseDirectory), "saved_com_port.txt");
         private readonly string _settingsFilePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath ?? AppDomain.CurrentDomain.BaseDirectory), "app_settings.json");
@@ -118,6 +136,10 @@ namespace LeftHandDeviceApp
 
             LoadSettings();
             LoadPatterns();
+            ActiveVolumeCount = 1;
+
+            _volumeController = new VolumeController(this);
+            _baseWindowTitle = Title;
 
             bool hasValidSavedPort = LoadComPorts();
             RenderAllPatterns();
@@ -191,6 +213,11 @@ namespace LeftHandDeviceApp
         protected override void OnClosed(EventArgs e)
         {
             StopCapture();
+            _volumeController?.Stop();
+            if (_isConnected && _serialPort != null && _serialPort.IsOpen)
+            {
+                try { SendSerialCommand("PC_VOLUME_MODE:0"); } catch { }
+            }
             if (_serialPort != null && _serialPort.IsOpen) _serialPort.Close();
             base.OnClosed(e);
         }
@@ -232,12 +259,11 @@ namespace LeftHandDeviceApp
                     var json = JObject.Parse(File.ReadAllText(_settingsFilePath));
                     if (json["ActiveButtonCount"] != null)
                         _activeButtonCount = json["ActiveButtonCount"].Value<int>();
+                    
                 }
                 catch { }
             }
-            // 有効ボタン数が1~5の範囲外の場合は補正
-            _activeButtonCount = Math.Max(1, Math.Min(5, _activeButtonCount));
-            ActiveButtonsText.Text = $"有効ボタン数: {_activeButtonCount}";
+            ActiveVolumeCount = 1;
         }
 
         private void LoadPatterns()
@@ -252,6 +278,7 @@ namespace LeftHandDeviceApp
                 }
                 catch { }
             }
+            MigrateVolumePatterns();
             // 初回起動時など空の場合、不足分を補う
             if (!File.Exists(_patternsFilePath) && _patterns.Count < 5)
             {
@@ -278,6 +305,36 @@ namespace LeftHandDeviceApp
             LoadSettings();
             LoadPatterns();
             RenderAllPatterns();
+        }
+
+        /// <summary>右/左2パターンを単一「ボリューム」へ移行</summary>
+        private void MigrateVolumePatterns()
+        {
+            var volList = _patterns.Where(p => p.TriggerType == 3).ToList();
+            if (volList.Count == 0) return;
+
+            var keep = volList.FirstOrDefault(p => p.TriggerParam2 == 1)
+                ?? volList.FirstOrDefault(p => p.Name.Contains("右"))
+                ?? volList[0];
+
+            foreach (var p in volList)
+            {
+                if (p.PotMin != 0 && keep.PotMin == 0) keep.PotMin = p.PotMin;
+                if (p.PotMax != 4095 && keep.PotMax == 4095) keep.PotMax = p.PotMax;
+                if (p.VolLimit != 100 && keep.VolLimit == 100) keep.VolLimit = p.VolLimit;
+                if (p.Steps.Count > 0 && keep.Steps.Count == 0)
+                    keep.Steps = new List<MacroStepConfig>(p.Steps);
+            }
+
+            keep.TriggerType = 3;
+            keep.TriggerParam1 = 1;
+            keep.TriggerParam2 = 0;
+            keep.Name = "ボリューム";
+
+            foreach (var p in volList)
+            {
+                if (p != keep) _patterns.Remove(p);
+            }
         }
 
         private void SavePatterns()
@@ -321,18 +378,43 @@ namespace LeftHandDeviceApp
                 }
             }
 
+            // 単一ボリュームパターンを確保
+            if (!_patterns.Any(p => p.TriggerType == 3 && p.TriggerParam1 == 1))
+            {
+                _patterns.Add(new PatternMacroConfig
+                {
+                    TriggerType = 3,
+                    TriggerParam1 = 1,
+                    TriggerParam2 = 0,
+                    Name = "ボリューム",
+                    VolLimit = 100
+                });
+            }
+            else
+            {
+                MigrateVolumePatterns();
+            }
+
             PatternsConfigPanel.Children.Clear();
             for (int i = 0; i < _patterns.Count; i++)
             {
                 var pat = _patterns[i];
-                // 有効ボタン数を超えるベースパターン（単押し）は非表示にする
-                if (pat.TriggerType == 0 && pat.TriggerParam1 > _activeButtonCount)
-                    continue;
-                // 有効ボタン数を超えるボタンを使う追加パターンも非表示にする
-                if (pat.TriggerParam1 > _activeButtonCount)
-                    continue;
-                if (pat.TriggerType == 1 && pat.TriggerParam2 > _activeButtonCount)
-                    continue;
+                // ボリュームパターンの表示制御
+                if (pat.TriggerType == 3)
+                {
+                    if (pat.TriggerParam1 != 1) continue;
+                }
+                else
+                {
+                    // 有効ボタン数を超えるベースパターン（単押し）は非表示にする
+                    if (pat.TriggerType == 0 && pat.TriggerParam1 > _activeButtonCount)
+                        continue;
+                    // 有効ボタン数を超えるボタンを使う追加パターンも非表示にする
+                    if (pat.TriggerParam1 > _activeButtonCount)
+                        continue;
+                    if (pat.TriggerType == 1 && pat.TriggerParam2 > _activeButtonCount)
+                        continue;
+                }
                 RenderPatternCard(i);
             }
             _isRenderingPatterns = false;
@@ -353,6 +435,7 @@ namespace LeftHandDeviceApp
             if (p.TriggerType == 0) return $"ボタン{p.TriggerParam1}";
             if (p.TriggerType == 1) return $"ボタン{p.TriggerParam1}とボタン{p.TriggerParam2}";
             if (p.TriggerType == 2) return $"ボタン{p.TriggerParam1}を{p.TriggerParam2}回";
+            if (p.TriggerType == 3) return "ボリューム";
             return $"パターン";
         }
 
@@ -366,6 +449,7 @@ namespace LeftHandDeviceApp
                     if (target.TriggerType == 0 && target.TriggerParam1 == p.TriggerParam1) return true;
                     if (target.TriggerType == 1 && ((target.TriggerParam1 == p.TriggerParam1 && target.TriggerParam2 == p.TriggerParam2) || (target.TriggerParam1 == p.TriggerParam2 && target.TriggerParam2 == p.TriggerParam1))) return true;
                     if (target.TriggerType == 2 && target.TriggerParam1 == p.TriggerParam1 && target.TriggerParam2 == p.TriggerParam2) return true;
+                    if (target.TriggerType == 3 && target.TriggerParam1 == p.TriggerParam1) return true;
                 }
             }
             return false;
@@ -411,6 +495,8 @@ namespace LeftHandDeviceApp
             // デフォルトパターンの判定：単押しで、パラメーターのボタン番号が現在の有効ボタン数以内であること
             // (並び替えによってindexが変化しても正しく判定できるようにする)
             bool isBasePattern = pattern.TriggerType == 0 && pattern.TriggerParam1 <= _activeButtonCount;
+            bool isBaseVolume = pattern.TriggerType == 3 && pattern.TriggerParam1 == 1;
+            bool isUndeletable = isBasePattern || isBaseVolume;
 
             var deleteBtn = new Button
             {
@@ -426,7 +512,7 @@ namespace LeftHandDeviceApp
             };
             Grid.SetColumn(deleteBtn, 1);
 
-            if (isBasePattern)
+            if (isUndeletable)
             {
                 deleteBtn.Visibility = Visibility.Collapsed;
             }
@@ -456,11 +542,17 @@ namespace LeftHandDeviceApp
                 tTypeCombo.SelectedIndex = 0;
                 tTypeCombo.IsEnabled = false;
             }
+            else if (isBaseVolume)
+            {
+                tTypeCombo.Items.Add(new ComboBoxItem { Content = "ボリューム", Tag = 3 });
+                tTypeCombo.SelectedIndex = 0;
+                tTypeCombo.IsEnabled = false;
+            }
             else
             {
                 tTypeCombo.Items.Add(new ComboBoxItem { Content = "同時押し", Tag = 1 });
                 tTypeCombo.Items.Add(new ComboBoxItem { Content = "複数回押し", Tag = 2 });
-                if (pattern.TriggerType == 0) pattern.TriggerType = 1; // force migrate old patterns correctly
+                if (pattern.TriggerType == 0 || pattern.TriggerType == 3) pattern.TriggerType = 1; // force migrate old patterns correctly
                 if (pattern.TriggerType == 1) tTypeCombo.SelectedIndex = 0;
                 else if (pattern.TriggerType == 2) tTypeCombo.SelectedIndex = 1;
                 else tTypeCombo.SelectedIndex = 0;
@@ -471,6 +563,13 @@ namespace LeftHandDeviceApp
             if (isBasePattern)
             {
                 tParam1Combo.Items.Add(new ComboBoxItem { Content = $"ボタン{pattern.TriggerParam1}", Tag = pattern.TriggerParam1 });
+                tParam1Combo.SelectedIndex = 0;
+                tParam1Combo.IsEnabled = false;
+            }
+            else if (isBaseVolume)
+            {
+                MaterialDesignThemes.Wpf.HintAssist.SetHint(tParam1Combo, "ボリューム");
+                tParam1Combo.Items.Add(new ComboBoxItem { Content = "ボリューム", Tag = 1 });
                 tParam1Combo.SelectedIndex = 0;
                 tParam1Combo.IsEnabled = false;
             }
@@ -607,9 +706,55 @@ namespace LeftHandDeviceApp
 
             triggerPanel.Children.Add(tTypeCombo);
             triggerPanel.Children.Add(tParam1Combo);
-            triggerPanel.Children.Add(param2Panel);
-            triggerPanel.Children.Add(repeatTxt);
+            if (!isBaseVolume)
+            {
+                triggerPanel.Children.Add(param2Panel);
+                triggerPanel.Children.Add(repeatTxt);
+            }
             container.Children.Add(triggerPanel);
+
+            if (isBaseVolume)
+            {
+                var volSettingsPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 10) };
+                
+                var volLimitTxt = new TextBlock { Text = $"上限: {pattern.VolLimit}%", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+                var volLimitSlider = new Slider { Minimum = 1, Maximum = 100, Value = pattern.VolLimit, Width = 100, TickFrequency = 1, IsSnapToTickEnabled = true, VerticalAlignment = VerticalAlignment.Center };
+                volLimitSlider.ValueChanged += (s, e) => {
+                    pattern.VolLimit = (int)e.NewValue;
+                    volLimitTxt.Text = $"上限: {pattern.VolLimit}%";
+                    ScheduleAutoSync(pattern);
+                    SyncPotConfig(); // Immediately sync to Arduino
+                };
+                
+                var potMinBtn = new Button { Content = "0点取得", Margin = new Thickness(15, 0, 5, 0), Style = (Style)FindResource("MaterialDesignOutlinedButton"), Padding = new Thickness(5, 0, 5, 0) };
+                var potMinTxt = new TextBlock { Text = pattern.PotMin.ToString(), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 15, 0), Width = 40, TextAlignment = TextAlignment.Right };
+                
+                var potMaxBtn = new Button { Content = "最大点取得", Margin = new Thickness(0, 0, 5, 0), Style = (Style)FindResource("MaterialDesignOutlinedButton"), Padding = new Thickness(5, 0, 5, 0) };
+                var potMaxTxt = new TextBlock { Text = pattern.PotMax.ToString(), VerticalAlignment = VerticalAlignment.Center, Width = 40, TextAlignment = TextAlignment.Right };
+                
+                potMinBtn.Click += (s, e) => {
+                    _calibrationTarget = pattern;
+                    _calibrationTargetProperty = 1;
+                    _calibrationTargetAction = (val) => { potMinTxt.Text = val.ToString(); };
+                    SendSerialCommand("GET_ADC");
+                };
+                
+                potMaxBtn.Click += (s, e) => {
+                    _calibrationTarget = pattern;
+                    _calibrationTargetProperty = 2;
+                    _calibrationTargetAction = (val) => { potMaxTxt.Text = val.ToString(); };
+                    SendSerialCommand("GET_ADC");
+                };
+
+                volSettingsPanel.Children.Add(volLimitTxt);
+                volSettingsPanel.Children.Add(volLimitSlider);
+                volSettingsPanel.Children.Add(potMinBtn);
+                volSettingsPanel.Children.Add(potMinTxt);
+                volSettingsPanel.Children.Add(potMaxBtn);
+                volSettingsPanel.Children.Add(potMaxTxt);
+                
+                container.Children.Add(volSettingsPanel);
+            }
 
             // For Mouse Capture Button logic
             var mouseCapMainBtn = new Button 
@@ -1084,6 +1229,9 @@ namespace LeftHandDeviceApp
                         // 接続成功したらデータ同期し、WAVEエフェクトを点灯させる
                         SyncAllToPico();
                         System.Threading.Thread.Sleep(50);
+                        SendSerialCommand("PC_VOLUME_MODE:1");
+                        SendSerialCommand("VOL_RESET");
+                        _volumeController?.Start();
                         _serialPort.WriteLine("WAVE");
                     }
                     catch (Exception ex)
@@ -1094,7 +1242,13 @@ namespace LeftHandDeviceApp
             }
             else
             {
-                if (_serialPort != null && _serialPort.IsOpen) _serialPort.Close();
+                if (_serialPort != null && _serialPort.IsOpen)
+                {
+                    try { SendSerialCommand("PC_VOLUME_MODE:0"); } catch { }
+                    _serialPort.Close();
+                }
+                _volumeController?.Stop();
+                Title = _baseWindowTitle;
                 _isConnected = false;
                 ConnectButton.Content = "接続する";
                 ComPortComboBox.IsEnabled = true;
@@ -1134,6 +1288,7 @@ namespace LeftHandDeviceApp
                         if (p1.TriggerType == 0 && p1.TriggerParam1 == p2.TriggerParam1) isDuplicate = true;
                         if (p1.TriggerType == 1 && ((p1.TriggerParam1 == p2.TriggerParam1 && p1.TriggerParam2 == p2.TriggerParam2) || (p1.TriggerParam1 == p2.TriggerParam2 && p1.TriggerParam2 == p2.TriggerParam1))) isDuplicate = true;
                         if (p1.TriggerType == 2 && p1.TriggerParam1 == p2.TriggerParam1 && p1.TriggerParam2 == p2.TriggerParam2) isDuplicate = true;
+                        if (p1.TriggerType == 3 && p1.TriggerParam1 == p2.TriggerParam1) isDuplicate = true;
                     }
 
                     if (isDuplicate)
@@ -1170,6 +1325,8 @@ namespace LeftHandDeviceApp
                     }
                 }
                 
+                SyncPotConfig();
+
                 // すべて送信し終わってからEEPROMに一括保存させる
                 _serialPort.WriteLine("SAVE_CONFIG");
                 System.Threading.Thread.Sleep(50);
@@ -1178,6 +1335,27 @@ namespace LeftHandDeviceApp
             {
                 System.Diagnostics.Debug.WriteLine("Sync error: " + ex.Message);
             }
+        }
+
+        /// <summary>キーボード等による外部音量変更時（VolumeController から呼ばれる）</summary>
+        public void OnExternalVolumeChanged()
+        {
+            SendSerialCommand("VOL_RESET");
+            Title = _baseWindowTitle + " — つまみを最小位置へ戻してください";
+        }
+
+        private void ShowPotNeedZeroHint()
+        {
+            var now = DateTime.UtcNow;
+            if ((now - _lastPotNeedZeroHint).TotalMilliseconds < 1500) return;
+            _lastPotNeedZeroHint = now;
+            Title = _baseWindowTitle + " — つまみを最小位置へ戻してください";
+        }
+
+        public void ClearVolumeHintTitle()
+        {
+            if (Title.StartsWith(_baseWindowTitle))
+                Title = _baseWindowTitle;
         }
 
         // --- Global Hook Logic ---
@@ -1330,7 +1508,72 @@ namespace LeftHandDeviceApp
                 if (_serialPort == null || !_serialPort.IsOpen) return;
                 string line = _serialPort.ReadLine().Trim();
 
-                if (line.StartsWith("CONTINUOUS_START:"))
+                if (line.StartsWith("ADC:"))
+                {
+                    var parts = line.Substring(4).Split(':');
+                    if (parts.Length == 2)
+                    {
+                        if (int.TryParse(parts[0], out int volIdx) && int.TryParse(parts[1], out int val))
+                        {
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                if (_calibrationTarget != null && _calibrationTargetAction != null)
+                                {
+                                    if (_calibrationTargetProperty == 1) _calibrationTarget.PotMin = val;
+                                    else if (_calibrationTargetProperty == 2) _calibrationTarget.PotMax = val;
+                                    
+                                    _calibrationTargetAction(val);
+                                    
+                                    _calibrationTarget = null;
+                                    _calibrationTargetProperty = 0;
+                                    _calibrationTargetAction = null;
+                                    
+                                    SavePatterns();
+                                    SyncPotConfig();
+                                }
+                                ADCValueReceivedForVolume?.Invoke(volIdx, val);
+                            });
+                        }
+                    }
+                    else if (parts.Length == 1)
+                    {
+                        if (int.TryParse(parts[0], out int val))
+                        {
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                if (_calibrationTarget != null && _calibrationTargetAction != null)
+                                {
+                                    if (_calibrationTargetProperty == 1) _calibrationTarget.PotMin = val;
+                                    else if (_calibrationTargetProperty == 2) _calibrationTarget.PotMax = val;
+                                    
+                                    _calibrationTargetAction(val);
+                                    
+                                    _calibrationTarget = null;
+                                    _calibrationTargetProperty = 0;
+                                    _calibrationTargetAction = null;
+                                    
+                                    SavePatterns();
+                                    SyncPotConfig();
+                                }
+                                ADCValueReceived?.Invoke(val);
+                                ADCValueReceivedForVolume?.Invoke(1, val);
+                            });
+                        }
+                    }
+                }
+                else if (line.StartsWith("VOL_STEP:"))
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        _volumeController?.ApplyDeviceVolumeStep();
+                        ClearVolumeHintTitle();
+                    });
+                }
+                else if (line == "POT_NEED_ZERO")
+                {
+                    Application.Current.Dispatcher.Invoke(ShowPotNeedZeroHint);
+                }
+                else if (line.StartsWith("CONTINUOUS_START:"))
                 {
                     // 連続動作開始通知を処理
                     string[] parts = line.Substring(17).Split(':');
@@ -1476,5 +1719,32 @@ namespace LeftHandDeviceApp
             }
             catch { }
         }
+
+        public void SendSerialCommand(string cmd)
+        {
+            if (_isConnected && _serialPort != null && _serialPort.IsOpen)
+            {
+                try
+                {
+                    _serialPort.WriteLine(cmd);
+                }
+                catch { }
+            }
+        }
+
+        public void SyncPotConfig()
+        {
+            var vp = _patterns.FirstOrDefault(p => p.TriggerType == 3 && p.TriggerParam1 == 1);
+            if (vp == null) return;
+            SendSerialCommand($"SET_POT_CONFIG:{vp.PotMin}:{vp.PotMax}:{vp.VolLimit}");
+            System.Threading.Thread.Sleep(50);
+            SendSerialCommand("SAVE_CONFIG");
+        }
+
+        public PatternMacroConfig? GetVolumePattern()
+        {
+            return _patterns.FirstOrDefault(p => p.TriggerType == 3 && p.TriggerParam1 == 1);
+        }
     }
 }
+

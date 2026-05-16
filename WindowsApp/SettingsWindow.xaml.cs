@@ -1,5 +1,5 @@
 // SettingsWindow.xaml.cs
-// v1.0.0
+// v1.17.0
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,7 +21,7 @@ namespace LeftHandDeviceApp
     public partial class SettingsWindow : Window
     {
         // アプリのバージョン
-        public const string AppVersion = "1.16.0";
+        public const string AppVersion = "1.17.0";
 
         // プロファイル設定ファイル (MainWindowと共通)
         private static readonly string PatternsFilePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath ?? AppDomain.CurrentDomain.BaseDirectory), "app_patterns.json");
@@ -47,7 +47,23 @@ namespace LeftHandDeviceApp
             LoadPatternsForSettings();
 
             // ウィンドウ表示後に自動でアップデート確認を実行
-            Loaded += async (s, e) => await PerformUpdateCheck();
+            Loaded += async (s, e) => {
+                await PerformUpdateCheck();
+                
+                if (Application.Current.MainWindow is MainWindow mw)
+                {
+                    // Volume settings will be dynamically added to VolumeSettingsContainer
+                    // 単一ボリューム（PoT1つ）
+                    mw.ADCValueReceivedForVolume += OnADCValueReceivedForVolume;
+                }
+            };
+
+            Unloaded += (s, e) => {
+                if (Application.Current.MainWindow is MainWindow mw)
+                {
+                    mw.ADCValueReceivedForVolume -= OnADCValueReceivedForVolume;
+                }
+            };
         }
 
         private void LoadPatternsForSettings()
@@ -596,7 +612,37 @@ del ""%~f0""
         }
 
 
+        // =============================================
+        // ボリューム設定用ハンドラ
+        // =============================================
+
+        /// <summary>
+        /// シリアル経由のADC値（ボリューム番号付き）。VolumeSettingsContainer のライブ表示は未実装のため予約。
+        /// </summary>
+        /// <param name="volumeIndex">1-origin のボリューム番号（デバイス側インデックスに準拠）</param>
+        /// <param name="adcValue">生のADC読み値</param>
+        private void OnADCValueReceivedForVolume(int volumeIndex, int adcValue)
+        {
+            _ = volumeIndex;
+            _ = adcValue;
+        }
+
+        private void SaveAllVolSettingsToJson(MainWindow mw)
+        {
+            try
+            {
+                JObject settings;
+                if (File.Exists(SettingsFilePath))
+                    settings = JObject.Parse(File.ReadAllText(SettingsFilePath));
+                else
+                    settings = new JObject();
+                
+                settings["ActiveVolumeCount"] = mw.ActiveVolumeCount;
+
+                
+                File.WriteAllText(SettingsFilePath, settings.ToString());
+            }
+            catch { }
+        }
     }
-
-
 }

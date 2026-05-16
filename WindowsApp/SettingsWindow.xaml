@@ -36,9 +36,9 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- ボタン数設定 -->
             <materialDesign:Card Grid.Row="0" Margin="0,0,0,12" Padding="16">
                 <StackPanel>
                     <TextBlock Text="有効ボタン数" FontSize="15" FontWeight="Bold" Margin="0,0,0,8"/>
@@ -110,8 +110,16 @@
                 </StackPanel>
             </materialDesign:Card>
 
+            <!-- ボリューム設定 -->
+            <materialDesign:Card Grid.Row="3" Margin="0,0,0,12" Padding="16">
+                <StackPanel>
+                    <TextBlock Text="ボリューム設定" FontSize="15" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <StackPanel x:Name="VolumeSettingsContainer"/>
+                </StackPanel>
+            </materialDesign:Card>
+
             <!-- アプリ情報 -->
-            <materialDesign:Card Grid.Row="3" Margin="0,0,0,0" Padding="16">
+            <materialDesign:Card Grid.Row="4" Margin="0,0,0,0" Padding="16">
                 <StackPanel>
                     <TextBlock Text="アプリケーション情報" FontSize="15" FontWeight="Bold" Margin="0,0,0,8"/>
                     <Grid>
