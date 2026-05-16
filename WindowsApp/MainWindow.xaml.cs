@@ -278,7 +278,7 @@ namespace LeftHandDeviceApp
                 }
                 catch { }
             }
-            MigrateVolumePatterns();
+            PatternListHelper.MigrateVolumePatterns(_patterns);
             // 初回起動時など空の場合、不足分を補う
             if (!File.Exists(_patternsFilePath) && _patterns.Count < 5)
             {
@@ -305,36 +305,6 @@ namespace LeftHandDeviceApp
             LoadSettings();
             LoadPatterns();
             RenderAllPatterns();
-        }
-
-        /// <summary>右/左2パターンを単一「ボリューム」へ移行</summary>
-        private void MigrateVolumePatterns()
-        {
-            var volList = _patterns.Where(p => p.TriggerType == 3).ToList();
-            if (volList.Count == 0) return;
-
-            var keep = volList.FirstOrDefault(p => p.TriggerParam2 == 1)
-                ?? volList.FirstOrDefault(p => p.Name.Contains("右"))
-                ?? volList[0];
-
-            foreach (var p in volList)
-            {
-                if (p.PotMin != 0 && keep.PotMin == 0) keep.PotMin = p.PotMin;
-                if (p.PotMax != 4095 && keep.PotMax == 4095) keep.PotMax = p.PotMax;
-                if (p.VolLimit != 100 && keep.VolLimit == 100) keep.VolLimit = p.VolLimit;
-                if (p.Steps.Count > 0 && keep.Steps.Count == 0)
-                    keep.Steps = new List<MacroStepConfig>(p.Steps);
-            }
-
-            keep.TriggerType = 3;
-            keep.TriggerParam1 = 1;
-            keep.TriggerParam2 = 0;
-            keep.Name = "ボリューム";
-
-            foreach (var p in volList)
-            {
-                if (p != keep) _patterns.Remove(p);
-            }
         }
 
         private void SavePatterns()
@@ -378,22 +348,7 @@ namespace LeftHandDeviceApp
                 }
             }
 
-            // 単一ボリュームパターンを確保
-            if (!_patterns.Any(p => p.TriggerType == 3 && p.TriggerParam1 == 1))
-            {
-                _patterns.Add(new PatternMacroConfig
-                {
-                    TriggerType = 3,
-                    TriggerParam1 = 1,
-                    TriggerParam2 = 0,
-                    Name = "ボリューム",
-                    VolLimit = 100
-                });
-            }
-            else
-            {
-                MigrateVolumePatterns();
-            }
+            PatternListHelper.EnsureVolumePattern(_patterns);
 
             PatternsConfigPanel.Children.Clear();
             for (int i = 0; i < _patterns.Count; i++)
@@ -435,7 +390,7 @@ namespace LeftHandDeviceApp
             if (p.TriggerType == 0) return $"ボタン{p.TriggerParam1}";
             if (p.TriggerType == 1) return $"ボタン{p.TriggerParam1}とボタン{p.TriggerParam2}";
             if (p.TriggerType == 2) return $"ボタン{p.TriggerParam1}を{p.TriggerParam2}回";
-            if (p.TriggerType == 3) return "ボリューム";
+            if (p.TriggerType == 3) return "ボリューム（つまみ）";
             return $"パターン";
         }
 
@@ -715,44 +670,71 @@ namespace LeftHandDeviceApp
 
             if (isBaseVolume)
             {
-                var volSettingsPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 10) };
-                
-                var volLimitTxt = new TextBlock { Text = $"上限: {pattern.VolLimit}%", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-                var volLimitSlider = new Slider { Minimum = 1, Maximum = 100, Value = pattern.VolLimit, Width = 100, TickFrequency = 1, IsSnapToTickEnabled = true, VerticalAlignment = VerticalAlignment.Center };
+                PatternListHelper.NormalizePotEndpoints(pattern);
+                var volSettingsPanel = new StackPanel { Margin = new Thickness(0, 10, 0, 10) };
+
+                var row1 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+                var volLimitTxt = new TextBlock { Text = $"追加音量上限: {pattern.VolLimit}%", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+                var volLimitSlider = new Slider { Minimum = 2, Maximum = 100, Value = pattern.VolLimit, Width = 120, TickFrequency = 2, IsSnapToTickEnabled = true, VerticalAlignment = VerticalAlignment.Center };
                 volLimitSlider.ValueChanged += (s, e) => {
-                    pattern.VolLimit = (int)e.NewValue;
-                    volLimitTxt.Text = $"上限: {pattern.VolLimit}%";
+                    int v = (int)e.NewValue;
+                    if (v % 2 != 0) v++;
+                    pattern.VolLimit = v;
+                    volLimitTxt.Text = $"追加音量上限: {pattern.VolLimit}%";
                     ScheduleAutoSync(pattern);
-                    SyncPotConfig(); // Immediately sync to Arduino
+                    SyncPotConfig();
                 };
-                
-                var potMinBtn = new Button { Content = "0点取得", Margin = new Thickness(15, 0, 5, 0), Style = (Style)FindResource("MaterialDesignOutlinedButton"), Padding = new Thickness(5, 0, 5, 0) };
-                var potMinTxt = new TextBlock { Text = pattern.PotMin.ToString(), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 15, 0), Width = 40, TextAlignment = TextAlignment.Right };
-                
-                var potMaxBtn = new Button { Content = "最大点取得", Margin = new Thickness(0, 0, 5, 0), Style = (Style)FindResource("MaterialDesignOutlinedButton"), Padding = new Thickness(5, 0, 5, 0) };
-                var potMaxTxt = new TextBlock { Text = pattern.PotMax.ToString(), VerticalAlignment = VerticalAlignment.Center, Width = 40, TextAlignment = TextAlignment.Right };
-                
+
+                var liveTxt = new TextBlock { Text = "現在位置: —%", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 0, 0) };
+                void updateLive(int adc)
+                {
+                    int pct = PatternListHelper.AdcToVolumePercent(adc, pattern.PotMin, pattern.PotMax);
+                    liveTxt.Text = $"現在位置: {pct}%";
+                }
+                ADCValueReceivedForVolume += (idx, adc) => { if (idx == 1) Application.Current.Dispatcher.Invoke(() => updateLive(adc)); };
+
+                row1.Children.Add(volLimitTxt);
+                row1.Children.Add(volLimitSlider);
+                row1.Children.Add(liveTxt);
+
+                var row2 = new StackPanel { Orientation = Orientation.Horizontal };
+                var potMinBtn = new Button { Content = "下限(0%)取得", Margin = new Thickness(0, 0, 5, 0), Style = (Style)FindResource("MaterialDesignOutlinedButton"), Padding = new Thickness(5, 0, 5, 0) };
+                var potMinTxt = new TextBlock { Text = "0%", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 15, 0), Width = 36, TextAlignment = TextAlignment.Right };
+                var potMaxBtn = new Button { Content = "上限(100%)取得", Margin = new Thickness(0, 0, 5, 0), Style = (Style)FindResource("MaterialDesignOutlinedButton"), Padding = new Thickness(5, 0, 5, 0) };
+                var potMaxTxt = new TextBlock { Text = "100%", VerticalAlignment = VerticalAlignment.Center, Width = 40, TextAlignment = TextAlignment.Right };
+
                 potMinBtn.Click += (s, e) => {
                     _calibrationTarget = pattern;
                     _calibrationTargetProperty = 1;
-                    _calibrationTargetAction = (val) => { potMinTxt.Text = val.ToString(); };
+                    _calibrationTargetAction = (val) => {
+                        pattern.PotMin = val;
+                        PatternListHelper.NormalizePotEndpoints(pattern);
+                        potMinTxt.Text = "0%";
+                        potMaxTxt.Text = "100%";
+                        updateLive(val);
+                    };
                     SendSerialCommand("GET_ADC");
                 };
-                
                 potMaxBtn.Click += (s, e) => {
                     _calibrationTarget = pattern;
                     _calibrationTargetProperty = 2;
-                    _calibrationTargetAction = (val) => { potMaxTxt.Text = val.ToString(); };
+                    _calibrationTargetAction = (val) => {
+                        pattern.PotMax = val;
+                        PatternListHelper.NormalizePotEndpoints(pattern);
+                        potMinTxt.Text = "0%";
+                        potMaxTxt.Text = "100%";
+                        updateLive(val);
+                    };
                     SendSerialCommand("GET_ADC");
                 };
 
-                volSettingsPanel.Children.Add(volLimitTxt);
-                volSettingsPanel.Children.Add(volLimitSlider);
-                volSettingsPanel.Children.Add(potMinBtn);
-                volSettingsPanel.Children.Add(potMinTxt);
-                volSettingsPanel.Children.Add(potMaxBtn);
-                volSettingsPanel.Children.Add(potMaxTxt);
-                
+                row2.Children.Add(potMinBtn);
+                row2.Children.Add(potMinTxt);
+                row2.Children.Add(potMaxBtn);
+                row2.Children.Add(potMaxTxt);
+
+                volSettingsPanel.Children.Add(row1);
+                volSettingsPanel.Children.Add(row2);
                 container.Children.Add(volSettingsPanel);
             }
 
@@ -1521,6 +1503,7 @@ namespace LeftHandDeviceApp
                                 {
                                     if (_calibrationTargetProperty == 1) _calibrationTarget.PotMin = val;
                                     else if (_calibrationTargetProperty == 2) _calibrationTarget.PotMax = val;
+                                    PatternListHelper.NormalizePotEndpoints(_calibrationTarget);
                                     
                                     _calibrationTargetAction(val);
                                     
@@ -1545,13 +1528,14 @@ namespace LeftHandDeviceApp
                                 {
                                     if (_calibrationTargetProperty == 1) _calibrationTarget.PotMin = val;
                                     else if (_calibrationTargetProperty == 2) _calibrationTarget.PotMax = val;
-                                    
+                                    PatternListHelper.NormalizePotEndpoints(_calibrationTarget);
+
                                     _calibrationTargetAction(val);
-                                    
+
                                     _calibrationTarget = null;
                                     _calibrationTargetProperty = 0;
                                     _calibrationTargetAction = null;
-                                    
+
                                     SavePatterns();
                                     SyncPotConfig();
                                 }
@@ -1743,7 +1727,16 @@ namespace LeftHandDeviceApp
 
         public PatternMacroConfig? GetVolumePattern()
         {
-            return _patterns.FirstOrDefault(p => p.TriggerType == 3 && p.TriggerParam1 == 1);
+            return PatternListHelper.GetVolumePattern(_patterns);
+        }
+
+        /// <summary>設定画面からPoT校正を開始</summary>
+        public void BeginVolumeCalibration(PatternMacroConfig vol, int property, Action<int> onSampled)
+        {
+            _calibrationTarget = vol;
+            _calibrationTargetProperty = property;
+            _calibrationTargetAction = onSampled;
+            SendSerialCommand("GET_ADC");
         }
     }
 }

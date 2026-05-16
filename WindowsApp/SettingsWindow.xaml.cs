@@ -1,5 +1,5 @@
 // SettingsWindow.xaml.cs
-// v1.17.0
+// v1.17.1
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,11 +21,12 @@ namespace LeftHandDeviceApp
     public partial class SettingsWindow : Window
     {
         // アプリのバージョン
-        public const string AppVersion = "1.17.0";
+        public const string AppVersion = "1.17.1";
 
         // プロファイル設定ファイル (MainWindowと共通)
         private static readonly string PatternsFilePath = Path.Combine(Path.GetDirectoryName(Environment.ProcessPath ?? AppDomain.CurrentDomain.BaseDirectory), "app_patterns.json");
         private List<PatternMacroConfig> _patterns = new List<PatternMacroConfig>();
+        private TextBlock? _settingsVolumeLiveTxt;
 
         // GitHubリポジトリ情報
         private const string GitHubOwner = "kazu-1234";
@@ -95,11 +96,8 @@ namespace LeftHandDeviceApp
                 SavePatternsForSettings();
             }
 
-            if (_patterns.Count == 5 && _patterns.All(p => p.TriggerType == 0))
-            {
-                _patterns = _patterns.OrderBy(p => p.TriggerParam1).ToList();
-            }
-
+            PatternListHelper.EnsureVolumePattern(_patterns);
+            BuildVolumeSettingsPanel();
             UpdateReorderList();
         }
 
@@ -127,7 +125,9 @@ namespace LeftHandDeviceApp
             for (int i = 0; i < _patterns.Count; i++)
             {
                 var p = _patterns[i];
-                string title = !string.IsNullOrWhiteSpace(p.Name) ? p.Name : $"パターン{i + 1}";
+                string title = p.TriggerType == 3
+                    ? "ボリューム（つまみ）"
+                    : (!string.IsNullOrWhiteSpace(p.Name) ? p.Name : $"パターン{i + 1}");
 
                 var itemGrid = new Grid { Background = (_selectedIndex == i) ? new SolidColorBrush(Color.FromArgb(40, 100, 149, 237)) : Brushes.Transparent };
                 itemGrid.Tag = p;
@@ -623,8 +623,65 @@ del ""%~f0""
         /// <param name="adcValue">生のADC読み値</param>
         private void OnADCValueReceivedForVolume(int volumeIndex, int adcValue)
         {
-            _ = volumeIndex;
-            _ = adcValue;
+            if (volumeIndex != 1 || _settingsVolumeLiveTxt == null) return;
+            var vol = PatternListHelper.GetVolumePattern(_patterns);
+            if (vol == null) return;
+            int pct = PatternListHelper.AdcToVolumePercent(adcValue, vol.PotMin, vol.PotMax);
+            _settingsVolumeLiveTxt.Text = $"現在位置: {pct}%";
+        }
+
+        private void BuildVolumeSettingsPanel()
+        {
+            VolumeSettingsContainer.Children.Clear();
+            var vol = PatternListHelper.GetVolumePattern(_patterns);
+            if (vol == null) return;
+            PatternListHelper.NormalizePotEndpoints(vol);
+
+            var row1 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            var limitTxt = new TextBlock { Text = $"追加音量上限: {vol.VolLimit}%", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+            var limitSlider = new Slider { Minimum = 2, Maximum = 100, Value = vol.VolLimit, Width = 120, TickFrequency = 2, IsSnapToTickEnabled = true };
+            limitSlider.ValueChanged += (s, e) => {
+                int v = (int)e.NewValue;
+                if (v % 2 != 0) v++;
+                vol.VolLimit = v;
+                limitTxt.Text = $"追加音量上限: {vol.VolLimit}%";
+                SavePatternsForSettings();
+                if (Application.Current.MainWindow is MainWindow mw) mw.SyncPotConfig();
+            };
+            _settingsVolumeLiveTxt = new TextBlock { Text = "現在位置: —%", Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            row1.Children.Add(limitTxt);
+            row1.Children.Add(limitSlider);
+            row1.Children.Add(_settingsVolumeLiveTxt);
+
+            var row2 = new StackPanel { Orientation = Orientation.Horizontal };
+            var minBtn = new Button { Content = "下限(0%)取得", Style = (Style)FindResource("MaterialDesignOutlinedButton"), Padding = new Thickness(5, 0, 5, 0), Margin = new Thickness(0, 0, 5, 0) };
+            var minLbl = new TextBlock { Text = "0%", Width = 36, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+            var maxBtn = new Button { Content = "上限(100%)取得", Style = (Style)FindResource("MaterialDesignOutlinedButton"), Padding = new Thickness(5, 0, 5, 0), Margin = new Thickness(0, 0, 5, 0) };
+            var maxLbl = new TextBlock { Text = "100%", Width = 40, VerticalAlignment = VerticalAlignment.Center };
+
+            minBtn.Click += (s, e) => RequestAdcCalibration(vol, 1, minLbl, maxLbl);
+            maxBtn.Click += (s, e) => RequestAdcCalibration(vol, 2, minLbl, maxLbl);
+
+            row2.Children.Add(minBtn);
+            row2.Children.Add(minLbl);
+            row2.Children.Add(maxBtn);
+            row2.Children.Add(maxLbl);
+
+            VolumeSettingsContainer.Children.Add(row1);
+            VolumeSettingsContainer.Children.Add(row2);
+        }
+
+        private void RequestAdcCalibration(PatternMacroConfig vol, int prop, TextBlock minLbl, TextBlock maxLbl)
+        {
+            if (Application.Current.MainWindow is not MainWindow mw) return;
+            mw.BeginVolumeCalibration(vol, prop, (adc) => {
+                PatternListHelper.NormalizePotEndpoints(vol);
+                minLbl.Text = "0%";
+                maxLbl.Text = "100%";
+                int pct = PatternListHelper.AdcToVolumePercent(adc, vol.PotMin, vol.PotMax);
+                if (_settingsVolumeLiveTxt != null) _settingsVolumeLiveTxt.Text = $"現在位置: {pct}%";
+                SavePatternsForSettings();
+            });
         }
 
         private void SaveAllVolSettingsToJson(MainWindow mw)
