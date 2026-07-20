@@ -2,9 +2,10 @@
 
 Raspberry Pi Pico 2 W (RP2350) をベースに開発した左手デバイス向けの設定用 Windows アプリケーション（WinUI 3 / Windows App SDK）です。
 
-ファームウェアは別場所で管理しています。
+ファームウェアは本リポジトリの `RaspberryPi/` にもあり、作業用の別コピーは次の場所です。
 
-- **ファームウェア**: `C:\Users\kazuh\Documents\Arduino\LeftHandDevice`
+- **ファームウェア（リポジトリ）**: `RaspberryPi/LeftHandDevice.ino`
+- **ファームウェア（作業用）**: `C:\Users\kazuh\Documents\Arduino\LeftHandDevice`
 
 PC 側のアプリケーションから複雑なマクロパターンを構築し、シリアル通信経由でマイコン本体の EEPROM に直接記憶させるアーキテクチャを採用しています。これにより、専用アプリがバックグラウンドで起動していなくてもどの PC でも同一の動作を行えます。
 
@@ -41,6 +42,8 @@ Raspberry Pi Pico 2 W を組み込んだデバイス本体。
 
 ```text
 LeftHandDevice/
+├── RaspberryPi/
+│   └── LeftHandDevice.ino
 ├── WindowsApp/
 │   └── WinApp/
 │       ├── LeftHandDevice.csproj
