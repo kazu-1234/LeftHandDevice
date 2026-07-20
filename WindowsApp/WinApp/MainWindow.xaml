@@ -1,0 +1,60 @@
+<Window x:Class="LeftHandDevice.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Auto Dark Mode 同等の WinUI TitleBar（カスタム Grid + 余白列は使わない） -->
+        <TitleBar x:Name="AppTitleBar"
+                  Grid.Row="0"
+                  Title="LeftHandDevice">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="ms-appx:///Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <NavigationView x:Name="NavView"
+                        Grid.Row="1"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        IsPaneOpen="True"
+                        PaneDisplayMode="Left"
+                        OpenPaneLength="240"
+                        ItemInvoked="NavView_ItemInvoked">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="NavItemHome" x:Uid="Nav_Home" Tag="Home">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE80F;" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem x:Uid="Nav_Info" Tag="Info">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE946;" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Uid="Nav_Settings" Tag="Settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" FontFamily="{ThemeResource SymbolThemeFontFamily}" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+            <NavigationView.Content>
+                <Frame x:Name="ContentFrame"
+                       Padding="0"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Stretch"
+                       HorizontalContentAlignment="Stretch"
+                       VerticalContentAlignment="Stretch">
+                    <Frame.ContentTransitions>
+                        <TransitionCollection />
+                    </Frame.ContentTransitions>
+                </Frame>
+            </NavigationView.Content>
+        </NavigationView>
+    </Grid>
+</Window>

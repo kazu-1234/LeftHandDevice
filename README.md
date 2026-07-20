@@ -1,36 +1,62 @@
-# LeftHandDevice (左手デバイス)
+# LeftHandDevice（Windows アプリ）
 
-Raspberry Pi Pico W を用いた自作の左手デバイス用ファームウェアおよびPC側（Windows WPF）設定アプリケーションです。
-デバイス側のキー入力やマウス操作のキャプチャ機能、マクロ設定などをPCから動的に構成することができます。
+左手デバイス（Raspberry Pi Pico 2 W）用の設定・同期アプリケーション（WinUI 3 / Windows App SDK）です。
+
+ファームウェアは別リポジトリで管理しています。
+
+- **ファームウェア**: `C:\Users\kazuh\Documents\Arduino\LeftHandDevice`
 
 ## 主な機能
 
-- **Pico W 連携**: アプリケーションからシリアル通信経由で各ボタンの動作（単発キー、マウスクリック一括登録など）を送信し、Pico Wに記憶。
-- **マクロ/マウス一括登録**: マウスカーソルの動きをキャプチャし、指定したボタンの1アクションとして連続実行させることが可能。
-- **ダーク/ライトモード対応**: Windowsのテーマ設定に合わせたUI変更、手動切り替えにも対応。
-- **自動アップデート確認**: GitHubのリリース機能と連携し、新しいバージョンがある場合は通知を表示。
-- **COMポート自動接続**: 前回接続したCOMポートを記憶し起動時に自動で再接続を試みます。
+- **Pico 連携**: シリアル通信でマクロパターンを送信し、デバイスの EEPROM に同期
+- **マウス一括登録**: 低レベルフックでクリック座標をキャプチャしマクロ化
+- **音量制御**: ロータリーエンコーダからの `VOL_STEP` を受信し、OS 音量を ±2% 刻みで変更
+- **テーマ**: ライト / ダーク / システム連動
+- **アップデート確認**: GitHub Release との照合
+- **ナビ UI**: 左サイドバー（ホーム / 情報 / 設定）
 
 ## ディレクトリ構成
 
-- `LeftHandDevice.ino` : Raspberry Pi Pico W 側のファームウェア（Arduino IDEベース）
-- `LeftHandDeviceApp/` : Windows用設定アプリケーション（C# / WPF / .NET）
-- `version_history.txt` : 各バージョンの更新履歴
+```text
+LeftHandDevice/
+├── WindowsApp/
+│   └── WinApp/
+│       ├── LeftHandDevice.csproj
+│       ├── MainWindow.xaml / .cs
+│       ├── DeviceService.cs
+│       └── Views/
+│           ├── HomePage.xaml*
+│           ├── InfoPage.xaml*
+│           └── SettingsPage.xaml*
+├── installer/
+├── scripts/
+├── ARCHITECTURE.md
+├── version_history.txt
+└── README.md
+```
 
-## 環境・ビルド方法
+## ビルド・実行
 
-### Raspberry Pi Pico W
-- Arduino IDE を使用し、ボードマネージャから Raspberry Pi Pico/RP2040 をインストールしてください。
-- `LeftHandDevice.ino` を書き込みます。
+1. [.NET 8 SDK](https://dotnet.microsoft.com/download) と Windows App SDK 対応環境を用意
+2. Visual Studio 2022 等で `WindowsApp/WinApp/LeftHandDevice.csproj` を開く（プラットフォームは x64）
+3. ビルドして起動し、COM ポートからデバイスに接続
 
-### Windows アプリ (LeftHandDeviceApp)
-- .NET SDK (net10.0-windows)
-- Visual Studio 2022 等で `LeftHandDeviceApp.csproj` を開き、ビルド・実行します。
+```powershell
+dotnet build WindowsApp\WinApp\LeftHandDevice.csproj -c Debug -p:Platform=x64
+```
+
+インストーラ作成:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
+```
+
+リリース版の `.exe` を使う場合は GitHub Releases からダウンロードしてください。
 
 ## 免責事項
 
-本ソフトウェアの使用により生じたいかなる損害（データ消失、システム不具合、セキュリティ上の問題など）についても、開発者は一切の責任を負いません。自己責任でご使用ください。特に重要な作業を行うPCでの使用には十分ご注意ください。
+本ソフトウェアの使用により生じたいかなる損害についても、開発者は一切の責任を負いません。自己責任でご使用ください。
 
 ## ライセンス
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License — 詳細は [LICENSE](LICENSE) を参照してください。

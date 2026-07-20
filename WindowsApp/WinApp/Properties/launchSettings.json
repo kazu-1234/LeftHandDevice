@@ -1,0 +1,8 @@
+﻿{
+  "profiles": {
+    "LeftHandDevice": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    }
+  }
+}

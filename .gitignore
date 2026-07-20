@@ -31,3 +31,8 @@ app_patterns.json
 err.txt
 build_error.txt
 build_log.txt
+
+# Publish / installer output
+dist/
+WindowsApp_wpf_backup_v1.18/
+LeftHandDeviceApp_backup/

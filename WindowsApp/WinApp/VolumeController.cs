@@ -1,20 +1,19 @@
 // VolumeController.cs
-// v1.17.0
 using System;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
+using Microsoft.UI.Dispatching;
 using NAudio.CoreAudioApi;
 
-namespace LeftHandDeviceApp
+namespace LeftHandDevice
 {
     /// <summary>
-    /// マスター音量の監視と、デバイスつまみからの +2% ステップ適用。
-    /// 外部（キーボード等）で音量が変わったらファームへ VOL_RESET を送る。
+    /// マスター音量の監視と、デバイスエンコーダからの ±2% ステップ適用。
+    /// WPF 非依存。UI スレッドへのマーシャリングは DispatcherQueue 経由。
     /// </summary>
     public sealed class VolumeController : IDisposable
     {
-        private readonly MainWindow _main;
+        private readonly Action _onExternalVolumeChanged;
+        private readonly DispatcherQueue? _dispatcherQueue;
         private MMDevice? _device;
         private bool _changeFromApp;
         private bool _suppressExternalOnce;
@@ -23,9 +22,13 @@ namespace LeftHandDeviceApp
 
         public bool IsActive => _device != null;
 
-        public VolumeController(MainWindow main)
+        /// <param name="onExternalVolumeChanged">外部（キーボード等）からの音量変更時コールバック</param>
+        /// <param name="dispatcherQueue">指定時はコールバックを UI スレッドへマーシャリング</param>
+        public VolumeController(Action onExternalVolumeChanged, DispatcherQueue? dispatcherQueue = null)
         {
-            _main = main;
+            _onExternalVolumeChanged = onExternalVolumeChanged
+                ?? throw new ArgumentNullException(nameof(onExternalVolumeChanged));
+            _dispatcherQueue = dispatcherQueue;
         }
 
         public void Start()
@@ -61,16 +64,17 @@ namespace LeftHandDeviceApp
 
         public void Dispose() => Stop();
 
-        /// <summary>ファームから VOL_STEP:1 を受信したとき +2%（0〜1スケールで0.02）</summary>
-        public void ApplyDeviceVolumeStep()
+        /// <summary>ファームから VOL_STEP:±1 を受信したとき ±2%（0〜1スケールで0.02）</summary>
+        public void ApplyDeviceVolumeStep(int direction)
         {
-            if (_device == null) return;
+            if (_device == null || direction == 0) return;
 
             try
             {
                 _changeFromApp = true;
                 float current = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
-                float next = Math.Min(1.0f, current + 0.02f);
+                float delta = direction > 0 ? 0.02f : -0.02f;
+                float next = Math.Clamp(current + delta, 0.0f, 1.0f);
                 _device.AudioEndpointVolume.MasterVolumeLevelScalar = next;
             }
             catch (Exception ex)
@@ -97,10 +101,14 @@ namespace LeftHandDeviceApp
                 return;
             _lastExternalNotify = now;
 
-            Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+            if (_dispatcherQueue != null)
             {
-                _main.OnExternalVolumeChanged();
-            }));
+                _dispatcherQueue.TryEnqueue(() => _onExternalVolumeChanged());
+            }
+            else
+            {
+                _onExternalVolumeChanged();
+            }
         }
     }
 }

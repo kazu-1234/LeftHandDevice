@@ -1,0 +1,63 @@
+<Page
+    x:Class="LeftHandDevice.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:views="using:LeftHandDevice.Views"
+    HorizontalAlignment="Stretch"
+    VerticalAlignment="Stretch">
+    <views:PageScrollHost>
+        <Grid x:Name="ContentArea"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Top">
+            <StackPanel Style="{StaticResource PageBaseStackPanelStyle}">
+                <TextBlock x:Uid="Page_Settings" Style="{StaticResource PageTitleTextStyle}" />
+
+                <TextBlock x:Uid="Settings_SectionAppearance" Style="{StaticResource SettingsSectionHeaderFirstStyle}" />
+
+                <controls:SettingsCard>
+                    <controls:SettingsCard.Header>
+                        <StackPanel Spacing="4" MinWidth="0">
+                            <TextBlock x:Uid="Settings_Theme" Style="{StaticResource CardHeaderTextStyle}" />
+                            <TextBlock x:Uid="Settings_ThemeDesc" Style="{StaticResource CardDescriptionTextStyle}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Header>
+                    <ComboBox x:Name="ThemeComboBox"
+                              MinWidth="180"
+                              SelectionChanged="ThemeComboBox_SelectionChanged" />
+                </controls:SettingsCard>
+
+                <TextBlock x:Uid="Settings_SectionDevice" Style="{StaticResource SettingsSectionHeaderStyle}" />
+
+                <controls:SettingsCard>
+                    <controls:SettingsCard.Header>
+                        <StackPanel Spacing="4" MinWidth="0">
+                            <TextBlock Text="有効ボタン数" Style="{StaticResource CardHeaderTextStyle}" />
+                            <TextBlock Text="使用する物理ボタンの個数（1〜5）" Style="{StaticResource CardDescriptionTextStyle}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Header>
+                    <ComboBox x:Name="ActiveButtonCombo"
+                              MinWidth="100"
+                              SelectionChanged="ActiveButtonCombo_SelectionChanged">
+                        <ComboBoxItem Content="1" Tag="1" />
+                        <ComboBoxItem Content="2" Tag="2" />
+                        <ComboBoxItem Content="3" Tag="3" />
+                        <ComboBoxItem Content="4" Tag="4" />
+                        <ComboBoxItem Content="5" Tag="5" />
+                    </ComboBox>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard>
+                    <controls:SettingsCard.Header>
+                        <StackPanel Spacing="4" MinWidth="0">
+                            <TextBlock Text="連続動作の警告音" Style="{StaticResource CardHeaderTextStyle}" />
+                            <TextBlock Text="ウィンドウ非アクティブ時に連続動作中なら警告音を鳴らす" Style="{StaticResource CardDescriptionTextStyle}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Header>
+                    <ToggleSwitch x:Name="WarningSoundToggle"
+                                  Toggled="WarningSoundToggle_Toggled" />
+                </controls:SettingsCard>
+            </StackPanel>
+        </Grid>
+    </views:PageScrollHost>
+</Page>
