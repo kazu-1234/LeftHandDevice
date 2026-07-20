@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppName" xml:space="preserve">
+    <value>LeftHandDevice</value>
+  </data>
+  <data name="Nav_Home.Content" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Nav_Info.Content" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="Nav_Settings.Content" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Home_Title.Text" xml:space="preserve">
+    <value>LeftHandDevice</value>
+  </data>
+  <data name="Home_Subtitle.Text" xml:space="preserve">
+    <value>Key and macro settings for the left-hand device</value>
+  </data>
+  <data name="Home_SectionStart.Text" xml:space="preserve">
+    <value>Getting started</value>
+  </data>
+  <data name="Home_Description.Text" xml:space="preserve">
+    <value>Windows settings app for Raspberry Pi Pico W 2 left-hand device macros and volume control.</value>
+  </data>
+  <data name="Home_Hint.Text" xml:space="preserve">
+    <value>Connect via COM port, edit patterns, and sync to the microcontroller.</value>
+  </data>
+  <data name="Page_Settings.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Page_Home.Text" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Page_Info.Text" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="Info_SectionUpdate.Text" xml:space="preserve">
+    <value>Updates</value>
+  </data>
+  <data name="Info_UpdateDesc.Text" xml:space="preserve">
+    <value>Check for the latest version from GitHub Releases</value>
+  </data>
+  <data name="Info_CheckUpdate.Content" xml:space="preserve">
+    <value>Check for updates</value>
+  </data>
+  <data name="Info_InstallUpdate.Content" xml:space="preserve">
+    <value>Download and run installer</value>
+  </data>
+  <data name="Info_AppName.Text" xml:space="preserve">
+    <value>LeftHandDevice</value>
+  </data>
+  <data name="Info_SectionAbout.Text" xml:space="preserve">
+    <value>Disclaimer</value>
+  </data>
+  <data name="Info_SectionDisclaimer.Text" xml:space="preserve">
+    <value>Disclaimer</value>
+  </data>
+  <data name="Info_Description.Text" xml:space="preserve">
+    <value>Windows settings app for a left-hand device (Raspberry Pi Pico W 2). Configure button macros, chord presses, continuous actions, and encoder volume, then sync over serial.</value>
+  </data>
+  <data name="Settings_SectionDevice.Text" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="Info_Disclaimer.Text" xml:space="preserve">
+    <value>This software is provided as is. The developer is not liable for any damages arising from its use, including but not limited to data loss, device failure, business interruption, or lost profits. Use entirely at your own risk. See the MIT License for details.</value>
+  </data>
+  <data name="Settings_SectionAppearance.Text" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="Settings_Theme.Text" xml:space="preserve">
+    <value>Theme</value>
+  </data>
+  <data name="Settings_ThemeDesc.Text" xml:space="preserve">
+    <value>Choose the app theme (default: follow system)</value>
+  </data>
+  <data name="Settings_Theme_System" xml:space="preserve">
+    <value>Use system setting</value>
+  </data>
+  <data name="Settings_Theme_Light" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="Settings_Theme_Dark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="Settings_SectionTray.Text" xml:space="preserve">
+    <value>Tray</value>
+  </data>
+  <data name="Settings_HideTrayIcon.Content" xml:space="preserve">
+    <value>Hide the tray icon</value>
+  </data>
+  <data name="Settings_SectionUpdate.Text" xml:space="preserve">
+    <value>Updates</value>
+  </data>
+  <data name="Settings_UpdateDesc" xml:space="preserve">
+    <value>Check for the latest version from GitHub Releases</value>
+  </data>
+  <data name="Settings_CheckUpdate.Content" xml:space="preserve">
+    <value>Check for updates</value>
+  </data>
+  <data name="Version_Format" xml:space="preserve">
+    <value>Current version: v{0}</value>
+  </data>
+  <data name="Update_NotConfigured" xml:space="preserve">
+    <value>Update check URL is not configured</value>
+  </data>
+  <data name="Update_FetchFailed" xml:space="preserve">
+    <value>Failed to fetch release information</value>
+  </data>
+  <data name="Update_Available" xml:space="preserve">
+    <value>A new version v{0} is available (current: v{1})</value>
+  </data>
+  <data name="Update_UpToDate" xml:space="preserve">
+    <value>v{0} is up to date</value>
+  </data>
+  <data name="Update_Error" xml:space="preserve">
+    <value>Update check error: {0}</value>
+  </data>
+  <data name="Update_AvailableTitle" xml:space="preserve">
+    <value>Update available</value>
+  </data>
+  <data name="Update_OpenRelease" xml:space="preserve">
+    <value>Open release page</value>
+  </data>
+  <data name="Update_DialogTitle" xml:space="preserve">
+    <value>Update available</value>
+  </data>
+  <data name="Update_DialogContent" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="Update_DialogOpen" xml:space="preserve">
+    <value>Open release page</value>
+  </data>
+  <data name="Update_DialogClose" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Common_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Update_DownloadReady" xml:space="preserve">
+    <value>Installer for version {0} is ready to download</value>
+  </data>
+  <data name="Update_Preparing" xml:space="preserve">
+    <value>Preparing...</value>
+  </data>
+  <data name="Update_Downloading" xml:space="preserve">
+    <value>Downloading...</value>
+  </data>
+  <data name="Update_LaunchingSetup" xml:space="preserve">
+    <value>Launching installer...</value>
+  </data>
+  <data name="Update_SetupStarted" xml:space="preserve">
+    <value>Installer launched. Follow the prompts to update.</value>
+  </data>
+  <data name="Update_SetupRequired" xml:space="preserve">
+    <value>Inno Setup setup.exe was not found. Update manually from the Release page.</value>
+  </data>
+  <data name="Update_Failed" xml:space="preserve">
+    <value>Update failed: {0}</value>
+  </data>
+  <data name="Tray_OpenSettings" xml:space="preserve">
+    <value>Open Settings</value>
+  </data>
+  <data name="Tray_Exit" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+</root>

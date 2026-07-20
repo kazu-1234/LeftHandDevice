@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/WindowsApp/">
+    <Project Path="WindowsApp/WinApp/LeftHandDevice.csproj" />
+  </Folder>
+</Solution>

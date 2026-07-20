@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppName" xml:space="preserve">
+    <value>LeftHandDevice</value>
+  </data>
+  <data name="Nav_Home.Content" xml:space="preserve">
+    <value>ホーム</value>
+  </data>
+  <data name="Nav_Info.Content" xml:space="preserve">
+    <value>情報</value>
+  </data>
+  <data name="Nav_Settings.Content" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Home_Title.Text" xml:space="preserve">
+    <value>LeftHandDevice</value>
+  </data>
+  <data name="Home_Subtitle.Text" xml:space="preserve">
+    <value>左手デバイスのキー・マクロ設定</value>
+  </data>
+  <data name="Home_SectionStart.Text" xml:space="preserve">
+    <value>はじめに</value>
+  </data>
+  <data name="Home_Description.Text" xml:space="preserve">
+    <value>Raspberry Pi Pico W 2 と連携し、ボタン操作のマクロと音量制御を設定するアプリです。</value>
+  </data>
+  <data name="Home_Hint.Text" xml:space="preserve">
+    <value>COMポートへ接続し、パターンを編集してマイコンへ保存してください。</value>
+  </data>
+  <data name="Page_Settings.Text" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Page_Home.Text" xml:space="preserve">
+    <value>ホーム</value>
+  </data>
+  <data name="Page_Info.Text" xml:space="preserve">
+    <value>情報</value>
+  </data>
+  <data name="Info_SectionUpdate.Text" xml:space="preserve">
+    <value>アップデート</value>
+  </data>
+  <data name="Info_UpdateDesc.Text" xml:space="preserve">
+    <value>GitHub リリースから最新版を確認します</value>
+  </data>
+  <data name="Info_CheckUpdate.Content" xml:space="preserve">
+    <value>更新を確認</value>
+  </data>
+  <data name="Info_InstallUpdate.Content" xml:space="preserve">
+    <value>インストーラーをダウンロードして実行</value>
+  </data>
+  <data name="Info_AppName.Text" xml:space="preserve">
+    <value>LeftHandDevice</value>
+  </data>
+  <data name="Info_SectionAbout.Text" xml:space="preserve">
+    <value>免責事項</value>
+  </data>
+  <data name="Info_SectionDisclaimer.Text" xml:space="preserve">
+    <value>免責事項</value>
+  </data>
+  <data name="Info_Description.Text" xml:space="preserve">
+    <value>左手操作用デバイス（Raspberry Pi Pico W 2）向けの Windows 設定アプリです。ボタンマクロ・同時押し・連続動作・エンコーダ音量を設定し、シリアル経由でマイコンへ同期します。</value>
+  </data>
+  <data name="Settings_SectionDevice.Text" xml:space="preserve">
+    <value>デバイス</value>
+  </data>
+  <data name="Info_Disclaimer.Text" xml:space="preserve">
+    <value>本ソフトウェアは現状有姿で提供されます。本ソフトウェアの使用により生じたいかなる損害（データの損失、機器の故障、業務の中断、逸失利益などを含みますがこれらに限りません）についても、開発者は一切の責任を負いません。本ソフトウェアの使用はすべて自己責任で行ってください。詳細は MIT License を参照してください。</value>
+  </data>
+  <data name="Settings_SectionAppearance.Text" xml:space="preserve">
+    <value>外観</value>
+  </data>
+  <data name="Settings_Theme.Text" xml:space="preserve">
+    <value>テーマ</value>
+  </data>
+  <data name="Settings_ThemeDesc.Text" xml:space="preserve">
+    <value>アプリの表示テーマを選択します（デフォルト: システム連動）</value>
+  </data>
+  <data name="Settings_Theme_System" xml:space="preserve">
+    <value>システムに合わせる</value>
+  </data>
+  <data name="Settings_Theme_Light" xml:space="preserve">
+    <value>ライト</value>
+  </data>
+  <data name="Settings_Theme_Dark" xml:space="preserve">
+    <value>ダーク</value>
+  </data>
+  <data name="Settings_SectionTray.Text" xml:space="preserve">
+    <value>タスクトレイ</value>
+  </data>
+  <data name="Settings_HideTrayIcon.Content" xml:space="preserve">
+    <value>タスクトレイアイコンを表示しない</value>
+  </data>
+  <data name="Settings_SectionUpdate.Text" xml:space="preserve">
+    <value>アップデート</value>
+  </data>
+  <data name="Settings_UpdateDesc" xml:space="preserve">
+    <value>GitHub リリースから最新版を確認します</value>
+  </data>
+  <data name="Settings_CheckUpdate.Content" xml:space="preserve">
+    <value>更新を確認</value>
+  </data>
+  <data name="Version_Format" xml:space="preserve">
+    <value>現在のバージョン: v{0}</value>
+  </data>
+  <data name="Update_NotConfigured" xml:space="preserve">
+    <value>更新確認 URL が設定されていません</value>
+  </data>
+  <data name="Update_FetchFailed" xml:space="preserve">
+    <value>リリース情報の取得に失敗しました</value>
+  </data>
+  <data name="Update_Available" xml:space="preserve">
+    <value>新しいバージョン v{0} が利用可能です（現在: v{1}）</value>
+  </data>
+  <data name="Update_UpToDate" xml:space="preserve">
+    <value>v{0} は最新です</value>
+  </data>
+  <data name="Update_Error" xml:space="preserve">
+    <value>更新確認エラー: {0}</value>
+  </data>
+  <data name="Update_AvailableTitle" xml:space="preserve">
+    <value>更新あり</value>
+  </data>
+  <data name="Update_OpenRelease" xml:space="preserve">
+    <value>リリースページを開く</value>
+  </data>
+  <data name="Update_DialogTitle" xml:space="preserve">
+    <value>更新あり</value>
+  </data>
+  <data name="Update_DialogContent" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="Update_DialogOpen" xml:space="preserve">
+    <value>リリースページを開く</value>
+  </data>
+  <data name="Update_DialogClose" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="Common_Cancel" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="Update_DownloadReady" xml:space="preserve">
+    <value>バージョン {0} のインストーラーをダウンロードできます</value>
+  </data>
+  <data name="Update_Preparing" xml:space="preserve">
+    <value>準備中...</value>
+  </data>
+  <data name="Update_Downloading" xml:space="preserve">
+    <value>ダウンロード中...</value>
+  </data>
+  <data name="Update_LaunchingSetup" xml:space="preserve">
+    <value>インストーラーを起動しています...</value>
+  </data>
+  <data name="Update_SetupStarted" xml:space="preserve">
+    <value>インストーラーを起動しました。画面の指示に従って更新してください。</value>
+  </data>
+  <data name="Update_SetupRequired" xml:space="preserve">
+    <value>Inno Setup の setup.exe が見つかりません。Release ページから手動で更新してください。</value>
+  </data>
+  <data name="Update_Failed" xml:space="preserve">
+    <value>更新失敗: {0}</value>
+  </data>
+  <data name="Tray_OpenSettings" xml:space="preserve">
+    <value>設定を開く</value>
+  </data>
+  <data name="Tray_Exit" xml:space="preserve">
+    <value>終了</value>
+  </data>
+</root>

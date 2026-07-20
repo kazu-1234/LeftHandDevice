@@ -1,9 +1,8 @@
 // PatternListHelper.cs
-// v1.17.1
 using System.Collections.Generic;
 using System.Linq;
 
-namespace LeftHandDeviceApp
+namespace LeftHandDevice
 {
     public static class PatternListHelper
     {
@@ -29,7 +28,7 @@ namespace LeftHandDeviceApp
             keep.TriggerParam1 = 1;
             keep.TriggerParam2 = 0;
             keep.Name = "ボリューム";
-            NormalizePotEndpoints(keep);
+            PreservePotEndpoints(keep);
 
             foreach (var p in volList)
             {
@@ -60,25 +59,23 @@ namespace LeftHandDeviceApp
             return patterns.FirstOrDefault(p => p.TriggerType == 3 && p.TriggerParam1 == 1);
         }
 
-        public static void NormalizePotEndpoints(PatternMacroConfig vol)
+        public static void PreservePotEndpoints(PatternMacroConfig vol)
         {
-            if (vol.PotMin > vol.PotMax)
-            {
-                int t = vol.PotMin;
-                vol.PotMin = vol.PotMax;
-                vol.PotMax = t;
-            }
+            // PotMinは「ユーザーが0%として登録した物理位置」、
+            // PotMaxは「100%として登録した物理位置」。大小順に入れ替えると回転方向が壊れる。
+            _ = vol;
         }
 
-        /// <summary>校正済みPoT位置を 0〜100% で表示</summary>
+        public static void NormalizePotEndpoints(PatternMacroConfig vol) => PreservePotEndpoints(vol);
+
+        /// <summary>校正済みPoT位置を0〜100%で表示</summary>
         public static int AdcToVolumePercent(int adc, int potMin, int potMax)
         {
-            NormalizePotEndpoints(new PatternMacroConfig { PotMin = potMin, PotMax = potMax });
-            int lo = potMin <= potMax ? potMin : potMax;
-            int hi = potMin <= potMax ? potMax : potMin;
-            if (hi <= lo) return 0;
-            adc = System.Math.Clamp(adc, lo, hi);
-            return (adc - lo) * 100 / (hi - lo);
+            int range = potMax - potMin;
+            if (range == 0) return 0;
+
+            int percent = (adc - potMin) * 100 / range;
+            return System.Math.Clamp(percent, 0, 100);
         }
 
         /// <summary>ファームへ送る1段あたりの最大ステップ数（+2%刻み）</summary>
