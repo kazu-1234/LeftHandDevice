@@ -1270,6 +1270,7 @@ namespace LeftHandDevice.Views
 
         private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcher;
         private readonly Action _onChanged;
+        private readonly ClickMarkerOverlay _clickMarkers = new();
 
         private LowLevelMouseProc? _mouseProc;
         private LowLevelKeyboardProc? _keyboardProc;
@@ -1320,6 +1321,8 @@ namespace LeftHandDevice.Views
         {
             if (!_isCapturing) return;
 
+            _clickMarkers.Clear();
+
             if (_mouseHookId != IntPtr.Zero)
             {
                 UnhookWindowsHookEx(_mouseHookId);
@@ -1361,6 +1364,7 @@ namespace LeftHandDevice.Views
                     if (!_isCapturing || pattern == null) return;
 
                     _captureCount++;
+                    _clickMarkers.Show(hookStruct.pt.x, hookStruct.pt.y, _captureCount);
 
                     if (_captureCount == 1 && _capturingStepIndex < pattern.Steps.Count)
                     {
@@ -1400,7 +1404,11 @@ namespace LeftHandDevice.Views
             return CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
         }
 
-        public void Dispose() => Stop();
+        public void Dispose()
+        {
+            Stop();
+            _clickMarkers.Dispose();
+        }
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr SetWindowsHookEx(int idHook, Delegate lpfn, IntPtr hMod, uint dwThreadId);
