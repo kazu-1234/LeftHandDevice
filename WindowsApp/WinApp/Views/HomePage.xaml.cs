@@ -544,13 +544,17 @@ namespace LeftHandDevice.Views
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 FontSize = 16,
                 Width = 220,
-                HorizontalAlignment = HorizontalAlignment.Left
+                HorizontalAlignment = HorizontalAlignment.Left,
+                IsReadOnly = isBaseVolume
             };
-            headTitle.TextChanged += (s, e) =>
+            if (!isBaseVolume)
             {
-                pattern.Name = headTitle.Text;
-                ScheduleAutoSync(pattern);
-            };
+                headTitle.TextChanged += (s, e) =>
+                {
+                    pattern.Name = headTitle.Text;
+                    ScheduleAutoSync(pattern);
+                };
+            }
             Grid.SetColumn(headTitle, 0);
 
             Action triggerChanged = () =>
@@ -804,14 +808,36 @@ namespace LeftHandDevice.Views
             }
             container.Children.Add(triggerPanel);
 
+            // ボリューム枠は表示のみ（編集・ステップ追加なし）
             if (isBaseVolume)
             {
-                container.Children.Add(new TextBlock
+                Grid.SetColumn(container, 0);
+                cardRoot.Children.Add(container);
+
+                var volumeDragHandle = new TextBlock
                 {
-                    Text = "音量はロータリーエンコーダ（24クリック）で調節します。1クリックあたり±2%（接続時はアプリ経由、未接続時はHID）。",
-                    Opacity = 0.7,
-                    TextWrapping = TextWrapping.WrapWholeWords
-                });
+                    Text = "☰",
+                    FontSize = 22,
+                    FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Opacity = 0.55
+                };
+                ToolTipService.SetToolTip(volumeDragHandle, "ドラッグでブロックを並び替え");
+                volumeDragHandle.PointerEntered += (s, e) => { if (s is TextBlock tb) tb.Opacity = 1.0; };
+                volumeDragHandle.PointerExited += (s, e) => { if (s is TextBlock tb) tb.Opacity = 0.55; };
+                Grid.SetColumn(volumeDragHandle, 1);
+                cardRoot.Children.Add(volumeDragHandle);
+
+                card.Child = cardRoot;
+                PatternsConfigPanel.Children.Add(card);
+
+                DragReorderHelper.AttachToStackPanel(
+                    volumeDragHandle,
+                    card,
+                    PatternsConfigPanel,
+                    OnPatternBlocksReordered);
+                return;
             }
 
             // --- マウス一括登録ボタン（フッター側で配置） ---

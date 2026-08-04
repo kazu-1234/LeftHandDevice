@@ -1,6 +1,6 @@
-/*
+﻿/*
  * LeftHandDevice.ino
- * v1.16.0
+ * v1.18.6
  * 
  * Raspberry Pi Pico 2 W 用 左手デバイスファームウェア
  * 同時押し・複数回押し・EEPROM可変パターン対応版
@@ -25,13 +25,30 @@
 #endif
 
 #define EEPROM_SIZE 4096
-#define CONFIG_MAGIC 0x1A2B3E03
+#define CONFIG_MAGIC 0x1A2B3E04
 
-const int PIN_BTN_MODE = 10;
-const int PIN_LED_MODE = 21;
-const int PIN_BTN[5] = {11, 12, 13, 14, 15};
-const int PIN_BTN_LED[5] = {20, 19, 18, 17, 16};
-const int ALL_LEDS[6] = {21, 20, 19, 18, 17, 16};
+const int PIN_BTN_MODE = 16;
+const int PIN_LED_MODE = 10;
+// ロータリーエンコーダ EC12E2420801 (24クリック)
+// 基板改修後の配線: 旧パターンをカットし GPIO 直結
+//   GP27 … エンコーダ A
+//   GP26 … エンコーダ B
+//   GND  … エンコーダ C（共通）
+// 内部プルアップ使用。3.3V はエンコーダへ接続しないこと。
+// 回転方向が逆のときは ENC_INVERT を -1 に変更
+// A/B が逆に付いている場合は PIN_ENC_A と PIN_ENC_B を入れ替える
+const int PIN_ENC_A = 27;
+const int PIN_ENC_B = 26;
+const int ENC_STEPS_PER_DETENT = 4;
+const int ENC_INVERT = 1;
+const int VOLUME_HID_PULSES = 1; // Windowsの音量キー1回≈2%。2回だと1クリックで約4%になる
+const unsigned long ENC_DEBOUNCE_MS = 3;
+const unsigned long ENC_MIN_STEP_MS = 30;
+const unsigned long ENC_DETENT_LOCKOUT_MS = 45; // 1クリック内の二重発火を抑止
+const unsigned long HID_PULSE_GAP_MS = 8;
+const int PIN_BTN[5] = {17, 18, 19, 20, 21};
+const int PIN_BTN_LED[5] = {11, 12, 13, 14, 15};
+const int ALL_LEDS[6] = {10, 11, 12, 13, 14, 15};
 
 bool isModeB = false;
 
@@ -62,9 +79,9 @@ struct MacroStep {
 };
 
 struct PatternConfig {
-  uint8_t triggerType; // 0=Single, 1=Sim, 2=Multi
-  uint8_t param1;      // Btn 1..5
-  uint8_t param2;      // Btn 1..5 or Tap Count 2..3
+  uint8_t triggerType; // 0=Single, 1=Sim, 2=Multi, 3=Pot(ボリューム)
+  uint8_t param1;      // Btn 1..5 / Pot: 1=有効
+  uint8_t param2;      // Btn 1..5 or Tap Count 2..3 / Pot: 未使用(0)
   uint8_t stepCount;
   uint16_t repeatInterval;
   MacroStep steps[10];
@@ -74,6 +91,9 @@ struct PatternConfig {
 struct DeviceConfig {
   uint32_t magic;
   uint8_t patternCount;
+  uint16_t potMin;
+  uint16_t potMax;
+  uint8_t volLimit;
   PatternConfig patterns[MAX_PATTERNS];
 };
 
@@ -103,6 +123,103 @@ const unsigned long MODE_BTN_DEBOUNCE = 50; // 50ms デバウンス
 const unsigned long DEBOUNCE_DELAY = 15;
 const unsigned long MULTITAP_WINDOW = 350; // 複数回押しの受付猶予(ms)
 const unsigned long SIMUL_WINDOW = 50;     // 同時押しの受付猶予(ms)
+
+// ----- ロータリーエンコーダ(音量)状態 -----
+static bool pcVolumeMode = false;
+static int16_t encoderAccum = 0;
+static int16_t encoderDetentBase = 0;
+static uint8_t encLastQuadrature = 0;
+static unsigned long encLastChangeMs = 0;
+static unsigned long encLastStepMs = 0;
+static unsigned long encDetentLockoutUntilMs = 0;
+
+static uint8_t hidVolKey = 0;
+static uint8_t hidVolPulsesLeft = 0;
+static unsigned long hidVolNextPulseMs = 0;
+
+static const int8_t ENC_TABLE[] = {
+   0, -1,  1,  0,
+   1,  0,  0, -1,
+  -1,  0,  0,  1,
+   0,  1, -1,  0
+};
+
+static uint8_t readEncoderState() {
+  return ((uint8_t)digitalRead(PIN_ENC_A) << 1) | (uint8_t)digitalRead(PIN_ENC_B);
+}
+
+static void sendHidVolumePulse(uint8_t consumerKey) {
+  Keyboard.consumerPress(consumerKey);
+  Keyboard.consumerRelease();
+}
+
+static void queueHidVolumeStep(int direction) {
+  hidVolKey = (direction > 0) ? 0xE9 : 0xEA;
+  hidVolPulsesLeft = VOLUME_HID_PULSES;
+  hidVolNextPulseMs = millis();
+}
+
+static void processHidVolumeQueue(unsigned long now) {
+  if (hidVolPulsesLeft == 0) return;
+  if (now < hidVolNextPulseMs) return;
+
+  sendHidVolumePulse(hidVolKey);
+  hidVolPulsesLeft--;
+  if (hidVolPulsesLeft > 0) {
+    hidVolNextPulseMs = now + HID_PULSE_GAP_MS;
+  }
+}
+
+static void applyVolumeStep(int direction) {
+  if (direction == 0) return;
+  // 接続有無にかかわらず HID Consumer で音量を変更する（VOL_STEP 経路は使わない）
+  queueHidVolumeStep(direction);
+}
+
+static void processEncoderVolume(unsigned long now) {
+  if (now < encDetentLockoutUntilMs) return;
+  if (now - encLastStepMs < ENC_MIN_STEP_MS) return;
+
+  if (encoderAccum - encoderDetentBase >= ENC_STEPS_PER_DETENT) {
+    encoderDetentBase += ENC_STEPS_PER_DETENT;
+    applyVolumeStep(ENC_INVERT);
+    encLastStepMs = now;
+    encDetentLockoutUntilMs = now + ENC_DETENT_LOCKOUT_MS;
+  } else if (encoderDetentBase - encoderAccum >= ENC_STEPS_PER_DETENT) {
+    encoderDetentBase -= ENC_STEPS_PER_DETENT;
+    applyVolumeStep(-ENC_INVERT);
+    encLastStepMs = now;
+    encDetentLockoutUntilMs = now + ENC_DETENT_LOCKOUT_MS;
+  }
+}
+
+static void pollEncoder(unsigned long now) {
+  uint8_t state = readEncoderState();
+  if (state != encLastQuadrature) {
+    if (now - encLastChangeMs >= ENC_DEBOUNCE_MS) {
+      uint8_t index = (encLastQuadrature << 2) | state;
+      int8_t delta = (int8_t)(ENC_TABLE[index & 0x0F] * ENC_INVERT);
+      encLastQuadrature = state;
+      encLastChangeMs = now;
+
+      if (delta != 0) {
+        encoderAccum += delta;
+      }
+    }
+  }
+
+  processEncoderVolume(now);
+}
+
+static void resetEncoderState() {
+  encoderAccum = 0;
+  encoderDetentBase = 0;
+  encLastQuadrature = readEncoderState();
+  encLastChangeMs = millis();
+  encLastStepMs = 0;
+  encDetentLockoutUntilMs = 0;
+  hidVolPulsesLeft = 0;
+}
 
 // =============================================
 // LEDウェーブ関数
@@ -175,6 +292,9 @@ void loadConfig() {
   if (config.magic != CONFIG_MAGIC) {
     config.magic = CONFIG_MAGIC;
     config.patternCount = 0;
+    config.potMin = 0;
+    config.potMax = 4095;
+    config.volLimit = 100;
     saveConfig();
   }
 }
@@ -335,6 +455,27 @@ void handleSerialCommand(char* cmdLine) {
     saveConfig();
     return;
   }
+  if (strncmp(cmdLine, "GET_ADC", 7) == 0) {
+    // 互換用: エンコーダ累積位置を返す（校正UI廃止後のデバッグ用途）
+    Serial.print("ADC:");
+    Serial.println(encoderDetentBase);
+    return;
+  }
+  if (strncmp(cmdLine, "SET_POT_CONFIG:", 15) == 0) {
+    config.potMin = 0;
+    config.potMax = 4095;
+    config.volLimit = 100;
+    return;
+  }
+  if (strncmp(cmdLine, "VOL_RESET", 9) == 0) {
+    resetEncoderState();
+    return;
+  }
+  if (strncmp(cmdLine, "PC_VOLUME_MODE:", 15) == 0) {
+    // 互換受信のみ。音量は常時 HID のためモードは常に OFF
+    pcVolumeMode = false;
+    return;
+  }
   // WPFアプリから特定のボタンLEDを点滅させるコマンド
   // フォーマット: FLASH_BUTTONS:btn1:btn2 (btn2が-1の場合は1つのみ)
   if (strncmp(cmdLine, "FLASH_BUTTONS:", 14) == 0) {
@@ -379,6 +520,10 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
   loadConfig();
 
+  pinMode(PIN_ENC_A, INPUT_PULLUP);
+  pinMode(PIN_ENC_B, INPUT_PULLUP);
+  pinMode(9, INPUT); // Disable GP9 to avoid interference
+
   pinMode(PIN_BTN_MODE, INPUT_PULLUP);
   pinMode(PIN_LED_MODE, OUTPUT);
   digitalWrite(PIN_LED_MODE, LOW);
@@ -400,6 +545,7 @@ void setup() {
   }
 
   playLedWave();
+  resetEncoderState();
 }
 
 char serialBuffer[128];
@@ -437,6 +583,10 @@ void loop() {
     }
   }
   lastModeBtnReading = modeBtnReading;
+
+  // ----- ロータリーエンコーダ: 1クリックあたり HID×1（≈±2%） -----
+  processHidVolumeQueue(currentTime);
+  pollEncoder(currentTime);
 
   // ボタン状態の更新 (デバウンス処理のみ、LEDはここでは制御しない)
   for (int i = 0; i < 5; i++) {
@@ -634,3 +784,6 @@ skipTrigger:
   // モード切替LEDを毎ループ末尾で確定させる（他の処理中のdelay等で不安定にならないようにする）
   digitalWrite(PIN_LED_MODE, isModeB ? HIGH : LOW);
 }
+
+
+

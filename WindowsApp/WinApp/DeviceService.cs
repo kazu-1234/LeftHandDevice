@@ -158,7 +158,8 @@ namespace LeftHandDevice
 
                     SyncAllToPico();
                     System.Threading.Thread.Sleep(50);
-                    SendSerialCommand("PC_VOLUME_MODE:1");
+                    // 音量は常時 HID。残留した PC モードをクリアする
+                    SendSerialCommand("PC_VOLUME_MODE:0");
                     SendSerialCommand("VOL_RESET");
                     try { sp.WriteLine("WAVE"); } catch { }
 
@@ -925,10 +926,10 @@ namespace LeftHandDevice
 
             try
             {
-                // 終了時はイベント発火・シリアル Close 待ちなし
+                // 終了時も PC_VOLUME_MODE:0 を送り HID に戻す（Close 待ち・イベントなし）
                 lock (_serialGate)
                 {
-                    DisconnectCore(sendVolumeModeOff: false, raiseEvents: false, waitForClose: false);
+                    DisconnectCore(sendVolumeModeOff: true, raiseEvents: false, waitForClose: false);
                 }
             }
             catch { }
